@@ -1,6 +1,7 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
+import { usePathname } from "next/navigation";
 import { Home, Users, MessageCircle, User, Settings } from "lucide-react";
 
 type NavItem = {
@@ -45,7 +46,8 @@ function NavLink({ item, active }: { item: NavItem; active?: boolean }) {
   );
 }
 
-export default function Sidebar({ activePath = "/dashboard" }: { activePath?: string }) {
+export default function Sidebar() {
+  const activePath = usePathname();
   return (
     <aside className="glass flex h-screen w-64 shrink-0 flex-col border-r border-border-subtle px-3 py-5">
       <div className="mb-6 flex items-center gap-2 px-2">
