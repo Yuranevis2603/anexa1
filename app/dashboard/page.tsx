@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getFeed } from "@/lib/feed";
+import { getFeed, getUserLikes } from "@/lib/feed";
 import PostComposer from "@/components/feed/PostComposer";
 import PostCard from "@/components/feed/PostCard";
 
@@ -18,6 +18,11 @@ export default async function DashboardPage() {
   }
 
   const feed = await getFeed(supabase);
+  const likedIds = await getUserLikes(
+    supabase,
+    user.id,
+    feed.map((item) => item.id)
+  );
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -40,7 +45,14 @@ export default async function DashboardPage() {
             </p>
           </div>
         ) : (
-          feed.map((item) => <PostCard key={item.id} item={item} />)
+          feed.map((item) => (
+            <PostCard
+              key={item.id}
+              item={item}
+              userId={user.id}
+              initiallyLiked={likedIds.has(item.id)}
+            />
+          ))
         )}
       </div>
     </div>
