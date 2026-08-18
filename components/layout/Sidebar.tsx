@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { Home, Users, MessageCircle, User, Settings } from "lucide-react";
+import { Home, Users, MessageCircle, User, Settings, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -11,10 +11,6 @@ type NavItem = {
   badge?: number;
 };
 
-// MVP scope for closed beta: Feed, Connections, Messages, Profile, Settings.
-// Everything else from the full module list (Events, Communities, Companies,
-// Tracker, Projects, Academy, AI, Meetings, Leaderboard, Referrals, Finance)
-// comes back once its turn arrives in the roadmap (see docs/instructions.md).
 const primaryNav: NavItem[] = [
   { label: "Головна", href: "/dashboard", icon: Home },
   { label: "Люди", href: "/dashboard/people", icon: Users },
@@ -23,13 +19,22 @@ const primaryNav: NavItem[] = [
   { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
 ];
 
-function NavLink({ item, active }: { item: NavItem; active?: boolean }) {
+function NavLink({
+  item,
+  active,
+  onNavigate,
+}: {
+  item: NavItem;
+  active?: boolean;
+  onNavigate?: () => void;
+}) {
   const Icon = item.icon;
   const activeClasses = "bg-white/[0.06] text-ink-primary";
   const inactiveClasses = "text-ink-secondary hover:bg-white/[0.05] hover:text-ink-primary";
   return (
     <a
       href={item.href}
+      onClick={onNavigate}
       className={
         "group flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] transition-colors " +
         (active ? activeClasses : inactiveClasses)
@@ -46,20 +51,47 @@ function NavLink({ item, active }: { item: NavItem; active?: boolean }) {
   );
 }
 
-export default function Sidebar() {
+export default function Sidebar({
+  open = false,
+  onClose,
+}: {
+  open?: boolean;
+  onClose?: () => void;
+}) {
   const activePath = usePathname();
+
   return (
-    <aside className="glass flex h-screen w-64 shrink-0 flex-col border-r border-border-subtle px-3 py-5">
-      <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-grad-purple-blue text-sm font-bold text-white shadow-glow-purple">
-          A
+    <aside
+      className={
+        "glass fixed inset-y-0 left-0 z-50 flex h-screen w-64 shrink-0 flex-col border-r border-border-subtle px-3 py-5 transition-transform duration-200 ease-out md:static md:translate-x-0 " +
+        (open ? "translate-x-0" : "-translate-x-full")
+      }
+    >
+      <div className="mb-6 flex items-center justify-between px-2">
+        <div className="flex items-center gap-2">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-grad-purple-blue text-sm font-bold text-white shadow-glow-purple">
+            A
+          </div>
+          <span className="font-display text-[15px] font-semibold text-ink-primary">Anexa Club</span>
         </div>
-        <span className="font-display text-[15px] font-semibold text-ink-primary">Anexa Club</span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Закрити меню"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
+        >
+          <X size={18} />
+        </button>
       </div>
 
       <nav className="flex flex-col gap-1">
         {primaryNav.map((item) => (
-          <NavLink key={item.href} item={item} active={item.href === activePath} />
+          <NavLink
+            key={item.href}
+            item={item}
+            active={item.href === activePath}
+            onNavigate={onClose}
+          />
         ))}
       </nav>
     </aside>

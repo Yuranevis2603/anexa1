@@ -1,28 +1,41 @@
 "use client";
 
-import { Search, Bell, ChevronDown } from "lucide-react";
+import { Search, Bell, ChevronDown, Menu } from "lucide-react";
 
 export default function Header({
   userName = "Марта Коваленко",
   userRole = "Співвласник · Lumen Studio",
   avatarUrl,
+  onMenuClick,
 }: {
   userName?: string;
   userRole?: string;
   avatarUrl?: string;
+  onMenuClick?: () => void;
 }) {
   return (
-    <header className="glass flex h-16 items-center justify-between border-b border-border-subtle px-6">
-      <div className="flex w-full max-w-md items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2">
-        <Search size={16} className="text-ink-tertiary" />
-        <input
-          type="text"
-          placeholder="Пошук людей, подій, проєктів..."
-          className="w-full bg-transparent text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
-        />
+    <header className="glass flex h-16 items-center justify-between gap-3 border-b border-border-subtle px-4 sm:px-6">
+      <div className="flex flex-1 items-center gap-3">
+        <button
+          type="button"
+          onClick={onMenuClick}
+          aria-label="Відкрити меню"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
+        >
+          <Menu size={19} />
+        </button>
+
+        <div className="flex w-full max-w-md items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2">
+          <Search size={16} className="shrink-0 text-ink-tertiary" />
+          <input
+            type="text"
+            placeholder="Пошук людей, подій, проєктів..."
+            className="w-full min-w-0 bg-transparent text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+          />
+        </div>
       </div>
 
-      <div className="flex items-center gap-4">
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         <button
           aria-label="Сповіщення"
           className="relative flex h-9 w-9 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.05] hover:text-ink-secondary"
@@ -42,7 +55,7 @@ export default function Header({
             <p className="text-[13px] font-medium text-ink-primary">{userName}</p>
             <p className="text-[11px] text-ink-tertiary">{userRole}</p>
           </div>
-          <ChevronDown size={14} className="text-ink-tertiary" />
+          <ChevronDown size={14} className="hidden text-ink-tertiary sm:block" />
         </button>
       </div>
     </header>
