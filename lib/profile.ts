@@ -10,6 +10,16 @@ export type Profile = {
   is_approved: boolean;
   created_at: string;
   updated_at: string;
+  industries: string[];
+  links: Record<string, string>;
+  location: string | null;
+  skills: string[];
+  interests: string[];
+  username: string | null;
+  cover_url: string | null;
+  membership_tier: "standard" | "black";
+  business_goals: string[];
+  languages: unknown[];
 };
 
 export async function getProfile(

@@ -27,9 +27,11 @@ function toEditable(profile: Profile): EditableFields {
 export default function ProfileView({
   profile,
   email,
+  viewerIsOwner = true,
 }: {
   profile: Profile;
-  email: string;
+  email?: string;
+  viewerIsOwner?: boolean;
 }) {
   const router = useRouter();
   const [current, setCurrent] = useState(profile);
@@ -106,13 +108,15 @@ export default function ProfileView({
               )}
             </div>
 
-            <button
-              onClick={openModal}
-              className="flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
-            >
-              <Pencil size={14} />
-              Редагувати профіль
-            </button>
+            {viewerIsOwner ? (
+              <button
+                onClick={openModal}
+                className="flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+              >
+                <Pencil size={14} />
+                Редагувати профіль
+              </button>
+            ) : null}
           </div>
 
           <div className="mt-4">
@@ -123,7 +127,9 @@ export default function ProfileView({
               {[current.role_title, current.company].filter(Boolean).join(" · ") ||
                 "Посада та компанія ще не вказані"}
             </p>
-            <p className="mt-1 text-[12px] text-ink-tertiary">{email}</p>
+            {viewerIsOwner && email ? (
+              <p className="mt-1 text-[12px] text-ink-tertiary">{email}</p>
+            ) : null}
           </div>
         </div>
       </section>
@@ -145,7 +151,7 @@ export default function ProfileView({
             </p>
           )}
 
-          {!current.is_approved && (
+          {viewerIsOwner && !current.is_approved && (
             <div className="mt-5 rounded-lg border border-gold/25 bg-gold/10 px-4 py-3">
               <p className="text-[12.5px] text-gold-soft">
                 Ваш профіль ще очікує підтвердження модератором закритої
@@ -205,7 +211,7 @@ export default function ProfileView({
       </div>
 
       {/* Edit modal */}
-      {modalOpen && (
+      {viewerIsOwner && modalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4">
           <div className="glass max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border-subtle bg-base-card p-6">
             <div className="mb-5 flex items-center justify-between">

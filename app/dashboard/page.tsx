@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { getFeed, getUserLikes } from "@/lib/feed";
-import PostComposer from "@/components/feed/PostComposer";
-import PostCard from "@/components/feed/PostCard";
+import { getProfile } from "@/lib/profile";
+import { getTopMatch } from "@/lib/match";
+import FeedView from "@/components/feed/FeedView";
 
 export const dynamic = "force-dynamic";
 
@@ -17,44 +17,12 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const feed = await getFeed(supabase);
-  const likedIds = await getUserLikes(
-    supabase,
-    user.id,
-    feed.map((item) => item.id)
-  );
+  const profile = await getProfile(supabase, user.id);
+  const topMatch = profile ? await getTopMatch(supabase, profile) : null;
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <h1 className="font-display text-2xl font-semibold text-ink-primary">
-        Стрічка
-      </h1>
-      <p className="mt-1 text-[13.5px] text-ink-secondary">
-        Останні новини та думки спільноти Anexa.
-      </p>
-
-      <div className="mt-5">
-        <PostComposer userId={user.id} />
-      </div>
-
-      <div className="mt-6 flex flex-col gap-4">
-        {feed.length === 0 ? (
-          <div className="glass rounded-2xl border border-border-subtle p-8 text-center">
-            <p className="text-[13.5px] text-ink-tertiary">
-              Ще немає жодного поста. Будьте першим, хто поділиться новиною.
-            </p>
-          </div>
-        ) : (
-          feed.map((item) => (
-            <PostCard
-              key={item.id}
-              item={item}
-              userId={user.id}
-              initiallyLiked={likedIds.has(item.id)}
-            />
-          ))
-        )}
-      </div>
+    <div className="mx-auto max-w-2xl">
+      <FeedView userId={user.id} profile={profile} topMatch={topMatch} />
     </div>
   );
 }
