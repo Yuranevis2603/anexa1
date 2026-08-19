@@ -289,7 +289,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
                 )}
 
                 <form onSubmit={handleLogin} noValidate>
-                  <input ref={loginHoneypot} type="text" name="company_website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                  <input ref={loginHoneypot} type="text" name="anexa_hp_x7q2" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
 
                   <div className={`field ${loginErrors.email ? "error" : ""}`}>
                     <label htmlFor="login-email">Email</label>
@@ -389,7 +389,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
                 )}
 
                 <form onSubmit={handleRegister} noValidate>
-                  <input ref={regHoneypot} type="text" name="company_website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                  <input ref={regHoneypot} type="text" name="anexa_hp_x7q2" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
 
                   <div className="name-row">
                     <div className={`field ${regErrors.first ? "error" : ""}`}>
@@ -525,7 +525,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
                     </div>
 
                     <form onSubmit={handleForgot} noValidate>
-                      <input ref={forgotHoneypot} type="text" name="company_website" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
+                      <input ref={forgotHoneypot} type="text" name="anexa_hp_x7q2" className="hp-field" tabIndex={-1} autoComplete="off" aria-hidden="true" />
                       <div className={`field ${forgotError ? "error" : ""}`}>
                         <label htmlFor="forgot-email">Email</label>
                         <input
