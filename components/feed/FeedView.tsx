@@ -1,9 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Plus } from "lucide-react";
+import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/profile";
+import { initials, type Profile } from "@/lib/profile";
 import type { MatchCandidate } from "@/lib/match";
 import {
   FEED_FILTERS,
@@ -192,22 +192,37 @@ export default function FeedView({
 
   return (
     <div>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl font-semibold text-ink-primary">Стрічка</h1>
-          <p className="mt-1 text-[13.5px] text-ink-secondary">
-            Ідеї, можливості та люди, які можуть змінити твій наступний проєкт.
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={() => setModalOpen(true)}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2.5 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
-        >
-          <Plus size={16} />
-          Створити пост
-        </button>
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-ink-primary">Стрічка</h1>
+        <p className="mt-1 text-[13.5px] text-ink-secondary">
+          Ідеї, можливості та люди, які можуть змінити твій наступний проєкт.
+        </p>
       </div>
+
+      <button
+        type="button"
+        onClick={() => setModalOpen(true)}
+        className="glass mt-4 flex w-full items-center gap-3 rounded-2xl border border-border-subtle p-3 text-left transition-colors hover:bg-white/[0.04] sm:p-3.5"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10">
+          {profile?.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+          ) : (
+            initials(profile?.full_name ?? "?")
+          )}
+        </div>
+        <span className="flex-1 truncate text-[13px] text-ink-tertiary sm:text-[13.5px]">
+          Поділіться ідеєю, проєктом чи можливістю...
+        </span>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/[0.06] text-ink-secondary">
+          <ImagePlus size={15} />
+        </span>
+        <span className="hidden shrink-0 items-center gap-1.5 rounded-full bg-grad-purple-blue px-3.5 py-1.5 text-[12.5px] font-medium text-white sm:flex">
+          <Plus size={14} />
+          Створити
+        </span>
+      </button>
 
       <div className="mt-5 flex gap-2 overflow-x-auto pb-1">
         {FEED_FILTERS.map((f) => (
