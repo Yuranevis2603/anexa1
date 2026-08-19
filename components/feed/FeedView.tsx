@@ -10,6 +10,7 @@ import {
   FEED_PAGE_SIZE,
   getFeedPage,
   getForYouPool,
+  getSavedFeedPage,
   getUserLikes,
   getUserSaves,
   personalizeFeed,
@@ -83,6 +84,10 @@ export default function FeedView({
           forYouPoolRef.current = pool;
           pageItems = pool.slice(0, FEED_PAGE_SIZE);
           more = pool.length > FEED_PAGE_SIZE;
+        } else if (targetFilter === "saved") {
+          const result = await getSavedFeedPage(supabase, { userId, page: 0 });
+          pageItems = result.items;
+          more = result.hasMore;
         } else {
           const result = await getFeedPage(supabase, { filter: targetFilter, page: 0 });
           pageItems = result.items;
@@ -90,9 +95,11 @@ export default function FeedView({
         }
 
         const ids = pageItems.map((i) => i.id);
+        // Every item on the "saved" tab is saved by definition — skip the
+        // redundant lookup and just mark the whole page.
         const [liked, saved] = await Promise.all([
           getUserLikes(supabase, userId, ids),
-          getUserSaves(supabase, userId, ids),
+          targetFilter === "saved" ? Promise.resolve(new Set(ids)) : getUserSaves(supabase, userId, ids),
         ]);
 
         if (requestId !== requestIdRef.current) return; // stale (filter changed again)
@@ -133,6 +140,10 @@ export default function FeedView({
         const start = nextPage * FEED_PAGE_SIZE;
         nextItems = pool.slice(start, start + FEED_PAGE_SIZE);
         more = start + FEED_PAGE_SIZE < pool.length;
+      } else if (filter === "saved") {
+        const result = await getSavedFeedPage(supabase, { userId, page: nextPage });
+        nextItems = result.items;
+        more = result.hasMore;
       } else {
         const result = await getFeedPage(supabase, { filter, page: nextPage });
         nextItems = result.items;
@@ -142,7 +153,7 @@ export default function FeedView({
       const ids = nextItems.map((i) => i.id);
       const [liked, saved] = await Promise.all([
         getUserLikes(supabase, userId, ids),
-        getUserSaves(supabase, userId, ids),
+        filter === "saved" ? Promise.resolve(new Set(ids)) : getUserSaves(supabase, userId, ids),
       ]);
 
       setItems((prev) => [...prev, ...nextItems]);
@@ -182,6 +193,12 @@ export default function FeedView({
   function handlePostDeleted(id: string) {
     setItems((prev) => prev.filter((i) => i.id !== id));
     forYouPoolRef.current = forYouPoolRef.current.filter((i) => i.id !== id);
+  }
+
+  // Un-saving only needs to drop the card when we're looking at the
+  // "saved" tab itself — everywhere else the post should stay put.
+  function handlePostUnsaved(id: string) {
+    setItems((prev) => prev.filter((i) => i.id !== id));
   }
 
   function handlePostCreated() {
@@ -274,19 +291,25 @@ export default function FeedView({
                   Створи перший пост і запусти свою першу можливість в ANEXA.
                 </p>
               </>
+            ) : filter === "saved" ? (
+              <p className="text-[13.5px] text-ink-secondary">
+                Ви ще нічого не зберегли. Натисніть 🔖 на будь-якому пості, щоб повернутися до нього пізніше.
+              </p>
             ) : (
               <p className="text-[13.5px] text-ink-secondary">
                 Поки немає постів у категорії «{activeFilterLabel}». Спробуйте інший фільтр або створіть перший.
               </p>
             )}
-            <button
-              type="button"
-              onClick={() => setModalOpen(true)}
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
-            >
-              <Plus size={15} />
-              Створити пост
-            </button>
+            {filter !== "saved" ? (
+              <button
+                type="button"
+                onClick={() => setModalOpen(true)}
+                className="mt-4 inline-flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+              >
+                <Plus size={15} />
+                Створити пост
+              </button>
+            ) : null}
           </div>
         ) : (
           <>
@@ -298,6 +321,7 @@ export default function FeedView({
                 initiallyLiked={likedIds.has(item.id)}
                 initiallySaved={savedIds.has(item.id)}
                 onDeleted={handlePostDeleted}
+                onUnsaved={filter === "saved" ? handlePostUnsaved : undefined}
               />
             ))}
 

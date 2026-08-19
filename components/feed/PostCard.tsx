@@ -47,12 +47,14 @@ export default function PostCard({
   initiallyLiked,
   initiallySaved,
   onDeleted,
+  onUnsaved,
 }: {
   item: FeedItem;
   userId: string;
   initiallyLiked: boolean;
   initiallySaved: boolean;
   onDeleted: (id: string) => void;
+  onUnsaved?: (id: string) => void;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -114,7 +116,11 @@ export default function PostCard({
     try {
       const supabase = createClient();
       await toggleSave(supabase, item.id, userId);
-      if (!wasSaved) showToast("success", "Збережено.");
+      if (!wasSaved) {
+        showToast("success", "Збережено. Переглянути можна у вкладці «🔖 Збережені».");
+      } else {
+        onUnsaved?.(item.id);
+      }
     } catch (error) {
       setSaved(wasSaved);
       showToast("error", "Не вдалося зберегти пост.");

@@ -44,7 +44,7 @@ export function workFormatLabel(format: string | null) {
   return WORK_FORMATS.find((f) => f.value === format)?.label ?? null;
 }
 
-export type FeedFilter = "for_you" | "new" | "opportunities" | "projects" | "requests";
+export type FeedFilter = "for_you" | "new" | "opportunities" | "projects" | "requests" | "saved";
 
 export const FEED_FILTERS: { value: FeedFilter; label: string }[] = [
   { value: "for_you", label: "Для тебе" },
@@ -52,6 +52,7 @@ export const FEED_FILTERS: { value: FeedFilter; label: string }[] = [
   { value: "opportunities", label: "Можливості" },
   { value: "projects", label: "Проєкти" },
   { value: "requests", label: "Запити" },
+  { value: "saved", label: "🔖 Збережені" },
 ];
 
 const FILTER_POST_TYPES: Partial<Record<FeedFilter, PostType[]>> = {
@@ -150,6 +151,38 @@ export async function getForYouPool(
   }
 
   return (data ?? []) as unknown as FeedItem[];
+}
+
+/**
+ * Server-paginated "🔖 Збережені" tab: the member's own saved_posts joined
+ * back to the full post, ordered by when it was saved (not when it was
+ * posted).
+ */
+export async function getSavedFeedPage(
+  supabase: SupabaseClient,
+  { userId, page = 0, pageSize = FEED_PAGE_SIZE }: { userId: string; page?: number; pageSize?: number }
+): Promise<{ items: FeedItem[]; hasMore: boolean }> {
+  const from = page * pageSize;
+  const to = from + pageSize;
+
+  const { data, error } = await supabase
+    .from("saved_posts")
+    .select(`activity_item:activity_items(${FEED_SELECT})`)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error("getSavedFeedPage failed:", error.message);
+    return { items: [], hasMore: false };
+  }
+
+  const rows = ((data ?? []) as unknown as { activity_item: FeedItem | null }[])
+    .map((row) => row.activity_item)
+    .filter((item): item is FeedItem => item !== null);
+
+  const hasMore = rows.length > pageSize;
+  return { items: rows.slice(0, pageSize), hasMore };
 }
 
 function scorePost(item: FeedItem, tags: Set<string>): number {
