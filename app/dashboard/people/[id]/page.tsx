@@ -28,5 +28,5 @@ export default async function MemberProfilePage({ params }: { params: { id: stri
     notFound();
   }
 
-  return <ProfileView profile={profile} viewerIsOwner={false} />;
+  return <ProfileView profile={profile} viewerIsOwner={false} viewerId={user.id} />;
 }

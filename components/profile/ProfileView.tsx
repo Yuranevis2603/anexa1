@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, X, Loader2, CheckCircle2, Circle } from "lucide-react";
+import { Pencil, X, Loader2, CheckCircle2, Circle, MessageCircle } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initials, profileCompleteness, type Profile } from "@/lib/profile";
+import { getOrCreateConversation } from "@/lib/messages";
+import { useToast } from "@/components/ui/ToastProvider";
 
 type EditableFields = {
   full_name: string;
@@ -28,19 +30,37 @@ export default function ProfileView({
   profile,
   email,
   viewerIsOwner = true,
+  viewerId,
 }: {
   profile: Profile;
   email?: string;
   viewerIsOwner?: boolean;
+  viewerId?: string;
 }) {
   const router = useRouter();
+  const { showToast } = useToast();
   const [current, setCurrent] = useState(profile);
   const [modalOpen, setModalOpen] = useState(false);
   const [form, setForm] = useState<EditableFields>(toEditable(profile));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [startingChat, setStartingChat] = useState(false);
 
   const completeness = profileCompleteness(current);
+
+  async function handleMessage() {
+    if (!viewerId || startingChat) return;
+    setStartingChat(true);
+    try {
+      const supabase = createClient();
+      const conversationId = await getOrCreateConversation(supabase, viewerId, current.id);
+      router.push(`/dashboard/messages?c=${conversationId}`);
+    } catch (err) {
+      showToast("error", "Не вдалося відкрити чат.");
+      console.error("getOrCreateConversation failed:", err);
+      setStartingChat(false);
+    }
+  }
 
   function openModal() {
     setForm(toEditable(current));
@@ -115,6 +135,15 @@ export default function ProfileView({
               >
                 <Pencil size={14} />
                 Редагувати профіль
+              </button>
+            ) : viewerId ? (
+              <button
+                onClick={handleMessage}
+                disabled={startingChat}
+                className="flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {startingChat ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
+                Написати
               </button>
             ) : null}
           </div>
