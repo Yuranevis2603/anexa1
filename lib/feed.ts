@@ -46,13 +46,14 @@ export function workFormatLabel(format: string | null) {
 
 export type FeedFilter = "for_you" | "new" | "opportunities" | "projects" | "requests" | "saved";
 
+// "saved" is deliberately excluded here — it has its own sidebar entry and
+// page (/dashboard/saved) instead of living as a pill in this row.
 export const FEED_FILTERS: { value: FeedFilter; label: string }[] = [
   { value: "for_you", label: "Для тебе" },
   { value: "new", label: "Нові" },
   { value: "opportunities", label: "Можливості" },
   { value: "projects", label: "Проєкти" },
   { value: "requests", label: "Запити" },
-  { value: "saved", label: "🔖 Збережені" },
 ];
 
 const FILTER_POST_TYPES: Partial<Record<FeedFilter, PostType[]>> = {
