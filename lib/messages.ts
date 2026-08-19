@@ -256,24 +256,40 @@ export async function getOrCreateConversation(
     if (shared) return shared.conversation_id as string;
   }
 
-  const { data: conversation, error: convError } = await supabase
-    .from("conversations")
-    .insert({})
-    .select("id")
-    .single();
+  // conversations_select_participant requires an existing participant row,
+  // which can't exist yet for a brand-new conversation — so reading the row
+  // back via .select() right after inserting it would be RLS-blocked (0 rows
+  // in RETURNING), and PostgREST rolls the whole insert back when a
+  // singular response can't be produced. Sidestep that chicken-and-egg
+  // problem entirely by generating the id client-side instead of reading it
+  // back from the database.
+  const conversationId = crypto.randomUUID();
+  const { error: convError } = await supabase.from("conversations").insert({ id: conversationId });
 
-  if (convError || !conversation) {
-    throw new Error(convError?.message ?? "Не вдалося створити розмову.");
+  if (convError) {
+    throw new Error(convError.message);
   }
 
-  const { error: participantsError } = await supabase.from("conversation_participants").insert([
-    { conversation_id: conversation.id, user_id: userId },
-    { conversation_id: conversation.id, user_id: otherUserId },
-  ]);
+  // Two separate inserts, not a single batched one: the "insert others into a
+  // conversation I'm already in" RLS branch checks for my own participant
+  // row via EXISTS, which isn't visible yet to a sibling row in the same
+  // multi-row INSERT statement — it only sees rows committed by prior
+  // statements.
+  const { error: myParticipantError } = await supabase
+    .from("conversation_participants")
+    .insert({ conversation_id: conversationId, user_id: userId });
 
-  if (participantsError) {
-    throw new Error(participantsError.message);
+  if (myParticipantError) {
+    throw new Error(myParticipantError.message);
   }
 
-  return conversation.id as string;
+  const { error: otherParticipantError } = await supabase
+    .from("conversation_participants")
+    .insert({ conversation_id: conversationId, user_id: otherUserId });
+
+  if (otherParticipantError) {
+    throw new Error(otherParticipantError.message);
+  }
+
+  return conversationId;
 }
