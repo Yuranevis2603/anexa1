@@ -75,15 +75,15 @@ export default function MessagesView({
   const selected = conversations.find((c) => c.id === selectedId) ?? null;
 
   return (
-    <div className="glass flex h-full min-h-0 overflow-hidden rounded-2xl border border-border-subtle">
+    <div className="glass flex h-full min-h-0 overflow-hidden rounded-2xl border border-border-subtle shadow-[0_24px_60px_-24px_rgba(0,0,0,0.55)]">
       <aside
-        className={`w-full shrink-0 flex-col md:flex md:w-[340px] ${
+        className={`w-full shrink-0 flex-col border-border-subtle md:flex md:w-[340px] md:border-r ${
           selectedId ? "hidden md:flex" : "flex"
         }`}
       >
         <div className="shrink-0 p-4">
           <h1 className="font-display text-xl font-semibold text-ink-primary">Повідомлення</h1>
-          <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2">
+          <div className="mt-3 flex items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 transition-colors focus-within:border-purple/40">
             <Search size={15} className="shrink-0 text-ink-tertiary" />
             <input
               type="text"
@@ -97,27 +97,34 @@ export default function MessagesView({
 
         <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-3">
           {filtered.length === 0 ? (
-            <p className="px-3 py-6 text-center text-[12.5px] text-ink-tertiary">
-              {conversations.length === 0
-                ? "У вас ще немає повідомлень."
-                : "Нічого не знайдено за цим запитом."}
-            </p>
+            <div className="flex flex-col items-center gap-2 px-3 py-10 text-center">
+              <div className="flex h-11 w-11 items-center justify-center rounded-full bg-white/[0.05] text-ink-tertiary">
+                <MessageCircle size={18} />
+              </div>
+              <p className="text-[12.5px] text-ink-tertiary">
+                {conversations.length === 0
+                  ? "У вас ще немає повідомлень."
+                  : "Нічого не знайдено за цим запитом."}
+              </p>
+            </div>
           ) : (
-            filtered.map((c) => (
-              <ChatListItem
-                key={c.id}
-                conversation={c}
-                active={c.id === selectedId}
-                online={c.otherParticipant ? online.has(c.otherParticipant.id) : false}
-                typing={false}
-                onSelect={() => handleSelect(c.id)}
-              />
-            ))
+            <div className="flex flex-col gap-0.5">
+              {filtered.map((c) => (
+                <ChatListItem
+                  key={c.id}
+                  conversation={c}
+                  active={c.id === selectedId}
+                  online={c.otherParticipant ? online.has(c.otherParticipant.id) : false}
+                  typing={false}
+                  onSelect={() => handleSelect(c.id)}
+                />
+              ))}
+            </div>
           )}
         </div>
       </aside>
 
-      <div className={`min-w-0 flex-1 flex-col md:flex ${selectedId ? "flex" : "hidden md:flex"}`}>
+      <div className={`min-w-0 flex-1 flex-col bg-white/[0.015] md:flex ${selectedId ? "flex" : "hidden md:flex"}`}>
         {selected ? (
           <ChatThread
             userId={userId}
@@ -127,9 +134,11 @@ export default function MessagesView({
             onMessageSent={handleMessageSent}
           />
         ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center text-ink-tertiary">
-            <MessageCircle size={28} className="opacity-50" />
-            <p className="text-[13px]">Оберіть розмову, щоб почати спілкування</p>
+          <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-grad-purple-blue opacity-90 shadow-glow-purple">
+              <MessageCircle size={22} className="text-white" />
+            </div>
+            <p className="text-[13px] text-ink-tertiary">Оберіть розмову, щоб почати спілкування</p>
           </div>
         )}
       </div>

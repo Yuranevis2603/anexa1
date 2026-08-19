@@ -24,12 +24,12 @@ export default function ChatListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`flex w-full items-start gap-3 rounded-xl px-3 py-2.5 text-left transition-colors ${
-        active ? "bg-white/[0.06]" : "hover:bg-white/[0.04]"
+      className={`flex w-full items-start gap-3 rounded-xl px-3 py-3 text-left transition-colors ${
+        active ? "bg-white/[0.07] shadow-[inset_2px_0_0_0_#7C5CFF]" : "hover:bg-white/[0.04]"
       }`}
     >
       <div className="relative shrink-0">
-        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
+        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
           {other?.avatar_url ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={other.avatar_url} alt={name} className="h-full w-full object-cover" />

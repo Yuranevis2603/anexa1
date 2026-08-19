@@ -163,7 +163,7 @@ export default function ChatThread({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <div className="flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle px-4 sm:px-5">
+      <div className="glass flex h-16 shrink-0 items-center gap-3 border-b border-border-subtle px-4 sm:px-5">
         {onBack ? (
           <button
             type="button"
@@ -205,9 +205,13 @@ export default function ChatThread({
         ) : (
           groups.map((group) => (
             <div key={group.day} className="flex flex-col gap-3.5">
-              <p className="self-center rounded-full bg-white/[0.03] px-3 py-1 text-[11.5px] text-ink-tertiary">
-                {formatDaySeparator(group.items[0].created_at)}
-              </p>
+              <div className="flex items-center gap-3 px-2">
+                <div className="h-px flex-1 bg-border-subtle" />
+                <p className="shrink-0 text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">
+                  {formatDaySeparator(group.items[0].created_at)}
+                </p>
+                <div className="h-px flex-1 bg-border-subtle" />
+              </div>
               {group.items.map((m) => {
                 const mine = m.sender_id === userId;
                 const read = mine && otherLastReadAt !== null && m.created_at <= otherLastReadAt;
@@ -218,8 +222,10 @@ export default function ChatThread({
                     style={{ alignSelf: mine ? "flex-end" : "flex-start" }}
                   >
                     <div
-                      className={`whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-[13.5px] leading-relaxed ${
-                        mine ? "bg-grad-purple-blue text-white" : "bg-base-card text-ink-primary"
+                      className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed shadow-sm ${
+                        mine
+                          ? "rounded-br-md bg-grad-purple-blue text-white shadow-glow-purple"
+                          : "rounded-bl-md border border-border-subtle bg-base-card text-ink-primary"
                       }`}
                     >
                       {m.content}
@@ -241,32 +247,34 @@ export default function ChatThread({
         )}
       </div>
 
-      <form onSubmit={handleSend} className="flex shrink-0 items-end gap-2.5 border-t border-border-subtle px-4 py-3.5 sm:px-5">
-        <button
-          type="button"
-          onClick={() => showToast("success", "Завантаження файлів у чат з'явиться найближчим часом.")}
-          aria-label="Прикріпити файл"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary"
-        >
-          <Paperclip size={17} />
-        </button>
-        <textarea
-          ref={textareaRef}
-          value={body}
-          onChange={handleBodyChange}
-          onKeyDown={handleKeyDown}
-          rows={1}
-          placeholder="Написати повідомлення..."
-          className="max-h-[120px] flex-1 resize-none rounded-xl border border-border-subtle bg-white/[0.03] px-3.5 py-2.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:border-purple/40 focus:outline-none"
-        />
-        <button
-          type="submit"
-          disabled={!body.trim() || sending}
-          aria-label="Надіслати"
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-grad-purple-blue text-white shadow-glow-purple transition-opacity disabled:opacity-50"
-        >
-          {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={15} />}
-        </button>
+      <form onSubmit={handleSend} className="glass shrink-0 border-t border-border-subtle px-4 py-3.5 sm:px-5">
+        <div className="flex items-end gap-2 rounded-2xl border border-border-subtle bg-white/[0.03] p-1.5 pl-2 transition-colors focus-within:border-purple/40">
+          <button
+            type="button"
+            onClick={() => showToast("success", "Завантаження файлів у чат з'явиться найближчим часом.")}
+            aria-label="Прикріпити файл"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
+          >
+            <Paperclip size={16} />
+          </button>
+          <textarea
+            ref={textareaRef}
+            value={body}
+            onChange={handleBodyChange}
+            onKeyDown={handleKeyDown}
+            rows={1}
+            placeholder="Написати повідомлення..."
+            className="max-h-[120px] flex-1 resize-none bg-transparent py-1.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+          />
+          <button
+            type="submit"
+            disabled={!body.trim() || sending}
+            aria-label="Надіслати"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-grad-purple-blue text-white shadow-glow-purple transition-opacity disabled:opacity-50"
+          >
+            {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
+          </button>
+        </div>
       </form>
     </div>
   );
