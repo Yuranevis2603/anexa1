@@ -255,9 +255,11 @@ export default function CreatePostModal({
                   onChange={(e) => setWorkFormat(e.target.value as WorkFormat | "")}
                   className="w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[13px] text-ink-primary focus:border-purple/40 focus:outline-none"
                 >
-                  <option value="">Не вказано</option>
+                  <option value="" className="bg-base-card text-ink-primary">
+                    Не вказано
+                  </option>
                   {WORK_FORMATS.map((f) => (
-                    <option key={f.value} value={f.value}>
+                    <option key={f.value} value={f.value} className="bg-base-card text-ink-primary">
                       {f.label}
                     </option>
                   ))}
@@ -273,9 +275,11 @@ export default function CreatePostModal({
                   onChange={(e) => setCtaType(e.target.value as CtaType | "")}
                   className="w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[13px] text-ink-primary focus:border-purple/40 focus:outline-none"
                 >
-                  <option value="">Без CTA</option>
+                  <option value="" className="bg-base-card text-ink-primary">
+                    Без CTA
+                  </option>
                   {CTA_TYPES.map((c) => (
-                    <option key={c.value} value={c.value}>
+                    <option key={c.value} value={c.value} className="bg-base-card text-ink-primary">
                       {c.label}
                     </option>
                   ))}
