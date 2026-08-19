@@ -3,6 +3,7 @@
 import { useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+import { OnlinePresenceProvider, useUnreadMessagesBadge } from "@/lib/presence";
 
 // Swipe gesture tuning: only arm "open" near the screen's left edge (like a
 // native app drawer) so it doesn't hijack horizontal scrollers elsewhere on
@@ -11,19 +12,24 @@ const EDGE_ZONE_PX = 28;
 const SWIPE_THRESHOLD_PX = 60;
 const MAX_VERTICAL_DRIFT_PX = 50;
 
-export default function DashboardShell({
+function DashboardShellInner({
   children,
+  userId,
   userName,
   userRole,
   avatarUrl,
+  initialUnreadMessages,
 }: {
   children: React.ReactNode;
+  userId?: string;
   userName?: string;
   userRole?: string;
   avatarUrl?: string;
+  initialUnreadMessages: number;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const unreadMessages = useUnreadMessagesBadge(userId, initialUnreadMessages);
 
   function handleTouchStart(e: React.TouchEvent) {
     const touch = e.touches[0];
@@ -68,7 +74,7 @@ export default function DashboardShell({
         />
       ) : null}
 
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} />
+      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} unreadMessages={unreadMessages} />
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
@@ -80,5 +86,35 @@ export default function DashboardShell({
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardShell({
+  children,
+  userId,
+  userName,
+  userRole,
+  avatarUrl,
+  initialUnreadMessages = 0,
+}: {
+  children: React.ReactNode;
+  userId?: string;
+  userName?: string;
+  userRole?: string;
+  avatarUrl?: string;
+  initialUnreadMessages?: number;
+}) {
+  return (
+    <OnlinePresenceProvider userId={userId}>
+      <DashboardShellInner
+        userId={userId}
+        userName={userName}
+        userRole={userRole}
+        avatarUrl={avatarUrl}
+        initialUnreadMessages={initialUnreadMessages}
+      >
+        {children}
+      </DashboardShellInner>
+    </OnlinePresenceProvider>
   );
 }

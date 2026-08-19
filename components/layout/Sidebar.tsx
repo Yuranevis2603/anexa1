@@ -11,14 +11,21 @@ type NavItem = {
   badge?: number;
 };
 
-const primaryNav: NavItem[] = [
-  { label: "Головна", href: "/dashboard", icon: Home },
-  { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
-  { label: "Люди", href: "/dashboard/people", icon: Users },
-  { label: "Повідомлення", href: "/dashboard/messages", icon: MessageCircle, badge: 5 },
-  { label: "Профіль", href: "/dashboard/profile", icon: User },
-  { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
-];
+function buildPrimaryNav(unreadMessages: number): NavItem[] {
+  return [
+    { label: "Головна", href: "/dashboard", icon: Home },
+    { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
+    { label: "Люди", href: "/dashboard/people", icon: Users },
+    {
+      label: "Повідомлення",
+      href: "/dashboard/messages",
+      icon: MessageCircle,
+      badge: unreadMessages > 0 ? unreadMessages : undefined,
+    },
+    { label: "Профіль", href: "/dashboard/profile", icon: User },
+    { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
+  ];
+}
 
 function NavLink({
   item,
@@ -55,11 +62,14 @@ function NavLink({
 export default function Sidebar({
   open = false,
   onClose,
+  unreadMessages = 0,
 }: {
   open?: boolean;
   onClose?: () => void;
+  unreadMessages?: number;
 }) {
   const activePath = usePathname();
+  const primaryNav = buildPrimaryNav(unreadMessages);
 
   return (
     <aside

@@ -16,6 +16,7 @@ import {
 import { initials } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
+import { getOrCreateConversation } from "@/lib/messages";
 import {
   createComment,
   ctaLabel,
@@ -84,6 +85,29 @@ export default function PostCard({
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [ctaPending, setCtaPending] = useState(false);
+
+  async function handleCta() {
+    if (ctaPending) return;
+
+    // "Написати" opens a real conversation; every other CTA is a softer
+    // "learn more about them" ask, so it lands on the profile instead.
+    if (item.cta_type !== "contact" || isOwn) {
+      router.push(profileHref);
+      return;
+    }
+
+    setCtaPending(true);
+    try {
+      const supabase = createClient();
+      const conversationId = await getOrCreateConversation(supabase, userId, item.user_id);
+      router.push(`/dashboard/messages?c=${conversationId}`);
+    } catch (error) {
+      showToast("error", "Не вдалося відкрити чат.");
+      console.error("getOrCreateConversation failed:", error);
+      setCtaPending(false);
+    }
+  }
 
   async function handleToggleLike() {
     if (likePending) return;
@@ -348,9 +372,11 @@ export default function PostCard({
       {cta ? (
         <button
           type="button"
-          onClick={() => router.push(profileHref)}
-          className="mt-3 rounded-lg bg-grad-purple-blue px-4 py-2 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+          onClick={handleCta}
+          disabled={ctaPending}
+          className="mt-3 flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:opacity-60"
         >
+          {ctaPending ? <Loader2 size={13} className="animate-spin" /> : null}
           {cta}
         </button>
       ) : null}
