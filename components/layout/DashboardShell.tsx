@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
+
+// Swipe gesture tuning: only arm "open" near the screen's left edge (like a
+// native app drawer) so it doesn't hijack horizontal scrollers elsewhere on
+// the page; "close" is armed anywhere once the drawer is already open.
+const EDGE_ZONE_PX = 28;
+const SWIPE_THRESHOLD_PX = 60;
+const MAX_VERTICAL_DRIFT_PX = 50;
 
 export default function DashboardShell({
   children,
@@ -16,9 +23,43 @@ export default function DashboardShell({
   avatarUrl?: string;
 }) {
   const [navOpen, setNavOpen] = useState(false);
+  const touchStart = useRef<{ x: number; y: number } | null>(null);
+
+  function handleTouchStart(e: React.TouchEvent) {
+    const touch = e.touches[0];
+    if (!touch) return;
+    if (!navOpen && touch.clientX > EDGE_ZONE_PX) {
+      touchStart.current = null;
+      return;
+    }
+    touchStart.current = { x: touch.clientX, y: touch.clientY };
+  }
+
+  function handleTouchEnd(e: React.TouchEvent) {
+    const start = touchStart.current;
+    touchStart.current = null;
+    if (!start) return;
+
+    const touch = e.changedTouches[0];
+    if (!touch) return;
+
+    const deltaX = touch.clientX - start.x;
+    const deltaY = Math.abs(touch.clientY - start.y);
+    if (deltaY > MAX_VERTICAL_DRIFT_PX) return; // vertical scroll, not a swipe
+
+    if (!navOpen && deltaX > SWIPE_THRESHOLD_PX) {
+      setNavOpen(true);
+    } else if (navOpen && deltaX < -SWIPE_THRESHOLD_PX) {
+      setNavOpen(false);
+    }
+  }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-base">
+    <div
+      className="flex h-screen overflow-hidden bg-base"
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+    >
       {navOpen ? (
         <div
           onClick={() => setNavOpen(false)}

@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-18.
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-19.
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -331,7 +331,11 @@ create policy "follows_delete_own"
 
 -- ============================================================================
 -- activity_items
--- Feed posts/articles/comments/media authored by members.
+-- Feed posts/articles/comments/media authored by members. The ANEXA Feed
+-- (idea/project/partner/specialist/opportunity/result business posts) is
+-- layered on top of this table via the post_type/category/budget/
+-- work_format/cta_type/image_url columns rather than a separate `posts`
+-- table, so likes/comments/saves keep working uniformly across both.
 -- ============================================================================
 create table if not exists public.activity_items (
   id uuid primary key default gen_random_uuid(),
@@ -341,28 +345,35 @@ create table if not exists public.activity_items (
   body text not null,
   like_count integer not null default 0,
   comment_count integer not null default 0,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Feed business-post metadata (all optional; null on legacy rows).
+  post_type text
+    check (post_type in ('idea', 'project', 'partner', 'specialist', 'opportunity', 'result')),
+  image_url text,
+  category text,
+  budget text,
+  work_format text
+    check (work_format in ('remote', 'office', 'hybrid')),
+  cta_type text
+    check (cta_type in ('contact', 'collaborate', 'join', 'learn_more'))
 );
 
 create index if not exists idx_activity_user on public.activity_items (user_id, created_at desc);
+create index if not exists idx_activity_items_created_at on public.activity_items (created_at desc);
+create index if not exists idx_activity_items_post_type on public.activity_items (post_type)
+  where post_type is not null;
 
 alter table public.activity_items enable row level security;
 
--- Visible to the author, and to anyone with an accepted connection to the author.
-create policy "activity_select_own_or_connected"
+-- Visible to the whole authenticated community — matches the select-all
+-- pattern used by profiles/projects/experience/communities/events/follows.
+-- (Previously gated to "author or accepted connection", which defeated the
+-- Feed's purpose of surfacing opportunities to members who don't know each
+-- other yet.)
+create policy "activity_items_select_all"
   on public.activity_items for select
-  to public
-  using (
-    user_id = (select auth.uid())
-    or exists (
-      select 1 from public.connections c
-      where c.status = 'accepted'
-        and (
-          (c.requester_id = (select auth.uid()) and c.addressee_id = activity_items.user_id)
-          or (c.addressee_id = (select auth.uid()) and c.requester_id = activity_items.user_id)
-        )
-    )
-  );
+  to authenticated
+  using (true);
 
 create policy "activity_insert_own"
   on public.activity_items for insert
@@ -376,6 +387,148 @@ create policy "activity_update_own"
 
 create policy "activity_delete_own"
   on public.activity_items for delete
+  to public
+  using (user_id = (select auth.uid()));
+
+-- ============================================================================
+-- activity_likes
+-- One like per (activity_item, user). like_count on activity_items is kept
+-- in sync by the trg_activity_likes_count trigger below.
+-- ============================================================================
+create table if not exists public.activity_likes (
+  id uuid primary key default gen_random_uuid(),
+  activity_item_id uuid not null references public.activity_items(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (activity_item_id, user_id)
+);
+
+create index if not exists idx_activity_likes_item on public.activity_likes (activity_item_id);
+create index if not exists idx_activity_likes_user_id on public.activity_likes (user_id);
+
+alter table public.activity_likes enable row level security;
+
+create policy "activity_likes_select"
+  on public.activity_likes for select
+  to public
+  using (exists (select 1 from public.activity_items ai where ai.id = activity_likes.activity_item_id));
+
+create policy "activity_likes_insert_own"
+  on public.activity_likes for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "activity_likes_delete_own"
+  on public.activity_likes for delete
+  to public
+  using (user_id = (select auth.uid()));
+
+-- ============================================================================
+-- activity_comments
+-- comment_count on activity_items is kept in sync by the
+-- trg_activity_comments_count trigger below.
+-- ============================================================================
+create table if not exists public.activity_comments (
+  id uuid primary key default gen_random_uuid(),
+  activity_item_id uuid not null references public.activity_items(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_activity_comments_item on public.activity_comments (activity_item_id);
+create index if not exists idx_activity_comments_user_id on public.activity_comments (user_id);
+
+alter table public.activity_comments enable row level security;
+
+create policy "activity_comments_select"
+  on public.activity_comments for select
+  to public
+  using (exists (select 1 from public.activity_items ai where ai.id = activity_comments.activity_item_id));
+
+create policy "activity_comments_insert_own"
+  on public.activity_comments for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "activity_comments_update_own"
+  on public.activity_comments for update
+  to public
+  using (user_id = (select auth.uid()));
+
+create policy "activity_comments_delete_own"
+  on public.activity_comments for delete
+  to public
+  using (user_id = (select auth.uid()));
+
+create or replace function public.sync_activity_like_count()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.activity_items set like_count = like_count + 1 where id = new.activity_item_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.activity_items set like_count = greatest(like_count - 1, 0) where id = old.activity_item_id;
+    return old;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists trg_activity_likes_count on public.activity_likes;
+create trigger trg_activity_likes_count
+  after insert or delete on public.activity_likes
+  for each row execute function public.sync_activity_like_count();
+
+create or replace function public.sync_activity_comment_count()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.activity_items set comment_count = comment_count + 1 where id = new.activity_item_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.activity_items set comment_count = greatest(comment_count - 1, 0) where id = old.activity_item_id;
+    return old;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists trg_activity_comments_count on public.activity_comments;
+create trigger trg_activity_comments_count
+  after insert or delete on public.activity_comments
+  for each row execute function public.sync_activity_comment_count();
+
+-- ============================================================================
+-- saved_posts
+-- Per-user bookmarks of activity_items ("Зберегти"). Private to the owner —
+-- unlike likes/comments, saves are not shown to other members.
+-- ============================================================================
+create table if not exists public.saved_posts (
+  id uuid primary key default gen_random_uuid(),
+  activity_item_id uuid not null references public.activity_items(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (activity_item_id, user_id)
+);
+
+create index if not exists idx_saved_posts_item on public.saved_posts (activity_item_id);
+create index if not exists idx_saved_posts_user on public.saved_posts (user_id, created_at desc);
+
+alter table public.saved_posts enable row level security;
+
+create policy "saved_posts_select_own"
+  on public.saved_posts for select
+  to public
+  using (user_id = (select auth.uid()));
+
+create policy "saved_posts_insert_own"
+  on public.saved_posts for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "saved_posts_delete_own"
+  on public.saved_posts for delete
   to public
   using (user_id = (select auth.uid()));
 
@@ -523,3 +676,51 @@ create trigger on_auth_user_created
 -- Project-level event trigger (public.rls_auto_enable) automatically runs
 -- `alter table ... enable row level security` on every newly created table
 -- in the public schema, so RLS is on by default even if a migration forgets it.
+
+-- ============================================================================
+-- Storage buckets
+-- Both buckets are public-read; writes are restricted to the caller's own
+-- `{auth.uid()}/...` folder via storage.foldername(name)[1].
+-- ============================================================================
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', true)
+on conflict (id) do nothing;
+
+insert into storage.buckets (id, name, public)
+values ('post-images', 'post-images', true)
+on conflict (id) do nothing;
+
+create policy "Anyone can view avatars"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'avatars');
+
+create policy "Users can upload their own avatar"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'avatars' and (storage.foldername(name))[1] = (auth.uid())::text);
+
+create policy "Users can update their own avatar"
+  on storage.objects for update
+  to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (auth.uid())::text);
+
+create policy "Users can delete their own avatar"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'avatars' and (storage.foldername(name))[1] = (auth.uid())::text);
+
+create policy "Anyone can view post images"
+  on storage.objects for select
+  to public
+  using (bucket_id = 'post-images');
+
+create policy "Users can upload their own post images"
+  on storage.objects for insert
+  to authenticated
+  with check (bucket_id = 'post-images' and (storage.foldername(name))[1] = (auth.uid())::text);
+
+create policy "Users can delete their own post images"
+  on storage.objects for delete
+  to authenticated
+  using (bucket_id = 'post-images' and (storage.foldername(name))[1] = (auth.uid())::text);

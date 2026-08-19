@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { Home, Users, MessageCircle, User, Settings, X } from "lucide-react";
+import { Home, Users, MessageCircle, User, Settings, Bookmark, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -13,6 +13,7 @@ type NavItem = {
 
 const primaryNav: NavItem[] = [
   { label: "Головна", href: "/dashboard", icon: Home },
+  { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
   { label: "Люди", href: "/dashboard/people", icon: Users },
   { label: "Повідомлення", href: "/dashboard/messages", icon: MessageCircle, badge: 5 },
   { label: "Профіль", href: "/dashboard/profile", icon: User },
