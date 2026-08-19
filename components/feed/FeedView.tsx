@@ -44,12 +44,14 @@ export default function FeedView({
   userId,
   profile,
   topMatch,
+  initialFilter = "for_you",
 }: {
   userId: string;
   profile: Profile | null;
   topMatch: MatchCandidate | null;
+  initialFilter?: FeedFilter;
 }) {
-  const [filter, setFilter] = useState<FeedFilter>("for_you");
+  const [filter, setFilter] = useState<FeedFilter>(initialFilter);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
