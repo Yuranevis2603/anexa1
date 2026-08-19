@@ -11,10 +11,29 @@ export type MessageParticipant = {
 export type ConversationSummary = {
   id: string;
   otherParticipant: MessageParticipant | null;
-  lastMessage: { content: string; created_at: string; sender_id: string } | null;
+  lastMessage: {
+    content: string;
+    created_at: string;
+    sender_id: string;
+    attachment_name: string | null;
+    attachment_type: string | null;
+  } | null;
   unreadCount: number;
   myLastReadAt: string;
 };
+
+/** Short label for a conversation-list preview when a message has no text. */
+export function attachmentPreviewLabel(name: string | null, type: string | null): string {
+  if (type?.startsWith("image/")) return "📷 Фото";
+  return `📎 ${name ?? "Файл"}`;
+}
+
+/** "4.2 MB" / "820 KB" for attachment file-size display. */
+export function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /** Compact relative time for the conversation list ("14:32", "Вчора", "3 дн тому"). */
 export function formatChatListTime(iso: string): string {
@@ -56,6 +75,10 @@ export type ChatMessage = {
   sender_id: string;
   content: string;
   created_at: string;
+  attachment_path: string | null;
+  attachment_name: string | null;
+  attachment_type: string | null;
+  attachment_size: number | null;
 };
 
 const PARTICIPANT_SELECT = "id, full_name, avatar_url, role_title, company";
@@ -94,7 +117,7 @@ export async function getConversations(
         .neq("user_id", userId),
       supabase
         .from("messages")
-        .select("id, conversation_id, sender_id, content, created_at")
+        .select("id, conversation_id, sender_id, content, created_at, attachment_name, attachment_type")
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: false })
         .limit(RECENT_MESSAGES_SCAN),
@@ -109,10 +132,7 @@ export async function getConversations(
     )
   );
 
-  const lastMessageByConversation = new Map<
-    string,
-    { content: string; created_at: string; sender_id: string }
-  >();
+  const lastMessageByConversation = new Map<string, NonNullable<ConversationSummary["lastMessage"]>>();
   const unreadByConversation = new Map<string, number>();
 
   for (const m of (recentMessages ?? []) as ChatMessage[]) {
@@ -121,6 +141,8 @@ export async function getConversations(
         content: m.content,
         created_at: m.created_at,
         sender_id: m.sender_id,
+        attachment_name: m.attachment_name ?? null,
+        attachment_type: m.attachment_type ?? null,
       });
     }
     const myLastRead = lastReadByConversation.get(m.conversation_id);
@@ -152,13 +174,16 @@ export async function getTotalUnreadCount(supabase: SupabaseClient, userId: stri
   return conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 }
 
+const MESSAGE_SELECT =
+  "id, conversation_id, sender_id, content, created_at, attachment_path, attachment_name, attachment_type, attachment_size";
+
 export async function getMessages(
   supabase: SupabaseClient,
   conversationId: string
 ): Promise<ChatMessage[]> {
   const { data, error } = await supabase
     .from("messages")
-    .select("id, conversation_id, sender_id, content, created_at")
+    .select(MESSAGE_SELECT)
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
 
@@ -170,16 +195,80 @@ export async function getMessages(
   return (data ?? []) as ChatMessage[];
 }
 
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+export type MessageAttachment = {
+  path: string;
+  name: string;
+  type: string;
+  size: number;
+};
+
+/** Uploads a chat attachment; path is scoped by conversation for the storage RLS to key off. */
+export async function uploadMessageAttachment(
+  supabase: SupabaseClient,
+  conversationId: string,
+  file: File
+): Promise<MessageAttachment> {
+  if (file.size > MAX_ATTACHMENT_BYTES) {
+    throw new Error("Файл завеликий (максимум 15 МБ).");
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase() || "bin";
+  const path = `${conversationId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error } = await supabase.storage.from("message-attachments").upload(path, file, {
+    cacheControl: "3600",
+    upsert: false,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { path, name: file.name, type: file.type || "application/octet-stream", size: file.size };
+}
+
+/** Batch-signs attachment paths (private bucket — no public URL) for rendering a page of messages. */
+export async function getSignedAttachmentUrls(
+  supabase: SupabaseClient,
+  paths: string[]
+): Promise<Map<string, string>> {
+  if (paths.length === 0) return new Map();
+
+  const { data, error } = await supabase.storage
+    .from("message-attachments")
+    .createSignedUrls(paths, 60 * 60);
+
+  if (error) {
+    console.error("getSignedAttachmentUrls failed:", error.message);
+    return new Map();
+  }
+
+  const map = new Map<string, string>();
+  for (const row of data ?? []) {
+    if (row.signedUrl && !row.error) {
+      map.set(row.path ?? "", row.signedUrl);
+    }
+  }
+  return map;
+}
+
 export async function sendMessage(
   supabase: SupabaseClient,
   conversationId: string,
   senderId: string,
-  content: string
+  content: string,
+  attachment?: MessageAttachment | null
 ): Promise<void> {
   const { error } = await supabase.from("messages").insert({
     conversation_id: conversationId,
     sender_id: senderId,
     content,
+    attachment_path: attachment?.path ?? null,
+    attachment_name: attachment?.name ?? null,
+    attachment_type: attachment?.type ?? null,
+    attachment_size: attachment?.size ?? null,
   });
 
   if (error) {

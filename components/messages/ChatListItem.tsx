@@ -1,7 +1,7 @@
 "use client";
 
 import { initials } from "@/lib/profile";
-import { formatChatListTime, type ConversationSummary } from "@/lib/messages";
+import { attachmentPreviewLabel, formatChatListTime, type ConversationSummary } from "@/lib/messages";
 
 export default function ChatListItem({
   conversation,
@@ -18,7 +18,12 @@ export default function ChatListItem({
 }) {
   const other = conversation.otherParticipant;
   const name = other?.full_name ?? "Учасник ANEXA";
-  const preview = conversation.lastMessage?.content ?? "Немає повідомлень";
+  const last = conversation.lastMessage;
+  const preview = !last
+    ? "Немає повідомлень"
+    : last.content.trim()
+      ? last.content
+      : attachmentPreviewLabel(last.attachment_name, last.attachment_type);
 
   return (
     <button

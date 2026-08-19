@@ -1,21 +1,28 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, Loader2, Paperclip, Send } from "lucide-react";
+import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import { initials } from "@/lib/profile";
 import {
+  attachmentPreviewLabel,
   formatDaySeparator,
+  formatFileSize,
   formatMessageTime,
   getMessages,
   getParticipantLastRead,
+  getSignedAttachmentUrls,
   markConversationRead,
   sendMessage,
+  uploadMessageAttachment,
   type ChatMessage,
   type ConversationSummary,
+  type MessageAttachment,
 } from "@/lib/messages";
 import { useTypingPresence } from "@/lib/presence";
+
+const MAX_ATTACHMENT_MB = 15;
 
 function groupByDay(messages: ChatMessage[]): { day: string; items: ChatMessage[] }[] {
   const groups: { day: string; items: ChatMessage[] }[] = [];
@@ -53,10 +60,21 @@ export default function ChatThread({
   const [otherLastReadAt, setOtherLastReadAt] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
+  const [signedUrls, setSignedUrls] = useState<Map<string, string>>(new Map());
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   const { otherIsTyping, notifyTyping } = useTypingPresence(conversation.id, userId);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function signAttachments(supabase: ReturnType<typeof createClient>, msgs: ChatMessage[]) {
+    const paths = msgs.map((m) => m.attachment_path).filter((p): p is string => Boolean(p));
+    if (paths.length === 0) return;
+    const urls = await getSignedAttachmentUrls(supabase, paths);
+    setSignedUrls((prev) => new Map([...prev, ...urls]));
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -73,6 +91,7 @@ export default function ChatThread({
       setMessages(history);
       setOtherLastReadAt(lastRead);
       setLoading(false);
+      signAttachments(supabase, history);
       await markConversationRead(supabase, conversation.id, userId);
     }
 
@@ -86,6 +105,7 @@ export default function ChatThread({
         (payload) => {
           const incoming = payload.new as ChatMessage;
           setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
+          if (incoming.attachment_path) signAttachments(supabase, [incoming]);
           if (incoming.sender_id !== userId) {
             markConversationRead(supabase, conversation.id, userId);
           }
@@ -129,19 +149,50 @@ export default function ChatThread({
     }
   }
 
+  function handleAttachClick() {
+    fileInputRef.current?.click();
+  }
+
+  function handleFileSelected(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > MAX_ATTACHMENT_MB * 1024 * 1024) {
+      showToast("error", `Файл завеликий (максимум ${MAX_ATTACHMENT_MB} МБ).`);
+      return;
+    }
+    setPendingFile(file);
+  }
+
   async function handleSend(e?: React.FormEvent) {
     e?.preventDefault();
     const trimmed = body.trim();
-    if (!trimmed || sending) return;
+    if ((!trimmed && !pendingFile) || sending || uploading) return;
+
+    const supabase = createClient();
+    let attachment: MessageAttachment | null = null;
+
+    if (pendingFile) {
+      setUploading(true);
+      try {
+        attachment = await uploadMessageAttachment(supabase, conversation.id, pendingFile);
+      } catch (error) {
+        showToast("error", error instanceof Error ? error.message : "Не вдалося завантажити файл.");
+        console.error("uploadMessageAttachment failed:", error);
+        setUploading(false);
+        return;
+      }
+      setUploading(false);
+    }
 
     setSending(true);
-    const supabase = createClient();
-
     try {
-      await sendMessage(supabase, conversation.id, userId, trimmed);
+      await sendMessage(supabase, conversation.id, userId, trimmed, attachment);
+      const preview = trimmed || (attachment ? attachmentPreviewLabel(attachment.name, attachment.type) : "");
       setBody("");
+      setPendingFile(null);
       if (textareaRef.current) textareaRef.current.style.height = "auto";
-      onMessageSent(conversation.id, trimmed, new Date().toISOString());
+      onMessageSent(conversation.id, preview, new Date().toISOString());
     } catch (error) {
       showToast("error", "Не вдалося надіслати повідомлення.");
       console.error("sendMessage failed:", error);
@@ -221,15 +272,51 @@ export default function ChatThread({
                     className="flex max-w-[75%] flex-col sm:max-w-[64%]"
                     style={{ alignSelf: mine ? "flex-end" : "flex-start" }}
                   >
-                    <div
-                      className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed shadow-sm ${
-                        mine
-                          ? "rounded-br-md bg-grad-purple-blue text-white shadow-glow-purple"
-                          : "rounded-bl-md border border-border-subtle bg-base-card text-ink-primary"
-                      }`}
-                    >
-                      {m.content}
-                    </div>
+                    {m.attachment_path ? (
+                      m.attachment_type?.startsWith("image/") ? (
+                        <a
+                          href={signedUrls.get(m.attachment_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mb-1.5 block overflow-hidden rounded-2xl border border-border-subtle"
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={signedUrls.get(m.attachment_path)}
+                            alt={m.attachment_name ?? ""}
+                            loading="lazy"
+                            className="max-h-72 w-full object-cover"
+                          />
+                        </a>
+                      ) : (
+                        <a
+                          href={signedUrls.get(m.attachment_path)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`mb-1.5 flex items-center gap-2.5 rounded-2xl border px-3.5 py-2.5 transition-opacity hover:opacity-90 ${
+                            mine ? "border-white/15 bg-white/10 text-white" : "border-border-subtle bg-base-card text-ink-primary"
+                          }`}
+                        >
+                          <FileIcon size={18} className="shrink-0 opacity-80" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[12.5px] font-medium">{m.attachment_name}</p>
+                            <p className="text-[11px] opacity-70">{formatFileSize(m.attachment_size ?? 0)}</p>
+                          </div>
+                          <Download size={15} className="shrink-0 opacity-70" />
+                        </a>
+                      )
+                    ) : null}
+                    {m.content.trim() ? (
+                      <div
+                        className={`whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-[13.5px] leading-relaxed shadow-sm ${
+                          mine
+                            ? "rounded-br-md bg-grad-purple-blue text-white shadow-glow-purple"
+                            : "rounded-bl-md border border-border-subtle bg-base-card text-ink-primary"
+                        }`}
+                      >
+                        {m.content}
+                      </div>
+                    ) : null}
                     <div
                       className="mt-1 flex items-center gap-1.5"
                       style={{ justifyContent: mine ? "flex-end" : "flex-start" }}
@@ -248,15 +335,34 @@ export default function ChatThread({
       </div>
 
       <form onSubmit={handleSend} className="glass shrink-0 border-t border-border-subtle px-4 py-3.5 sm:px-5">
+        {pendingFile ? (
+          <div className="mb-2 flex items-center gap-2.5 rounded-xl border border-border-subtle bg-white/[0.03] px-3 py-2">
+            <FileIcon size={16} className="shrink-0 text-ink-tertiary" />
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[12.5px] font-medium text-ink-primary">{pendingFile.name}</p>
+              <p className="text-[11px] text-ink-tertiary">{formatFileSize(pendingFile.size)}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setPendingFile(null)}
+              aria-label="Прибрати файл"
+              className="shrink-0 text-ink-tertiary transition-colors hover:text-danger"
+            >
+              <X size={15} />
+            </button>
+          </div>
+        ) : null}
         <div className="flex items-end gap-2 rounded-2xl border border-border-subtle bg-white/[0.03] p-1.5 pl-2 transition-colors focus-within:border-purple/40">
           <button
             type="button"
-            onClick={() => showToast("success", "Завантаження файлів у чат з'явиться найближчим часом.")}
+            onClick={handleAttachClick}
+            disabled={uploading}
             aria-label="Прикріпити файл"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-ink-primary disabled:opacity-50"
           >
             <Paperclip size={16} />
           </button>
+          <input ref={fileInputRef} type="file" onChange={handleFileSelected} className="hidden" />
           <textarea
             ref={textareaRef}
             value={body}
@@ -268,11 +374,11 @@ export default function ChatThread({
           />
           <button
             type="submit"
-            disabled={!body.trim() || sending}
+            disabled={(!body.trim() && !pendingFile) || sending || uploading}
             aria-label="Надіслати"
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-grad-purple-blue text-white shadow-glow-purple transition-opacity disabled:opacity-50"
           >
-            {sending ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
+            {sending || uploading ? <Loader2 size={15} className="animate-spin" /> : <Send size={14} />}
           </button>
         </div>
       </form>

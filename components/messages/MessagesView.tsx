@@ -54,7 +54,17 @@ export default function MessagesView({
     setConversations((prev) => {
       const next = prev.map((c) =>
         c.id === conversationId
-          ? { ...c, lastMessage: { content: preview, created_at: at, sender_id: userId }, unreadCount: 0 }
+          ? {
+              ...c,
+              lastMessage: {
+                content: preview,
+                created_at: at,
+                sender_id: userId,
+                attachment_name: null,
+                attachment_type: null,
+              },
+              unreadCount: 0,
+            }
           : c
       );
       return [...next].sort((a, b) => (b.lastMessage?.created_at ?? "").localeCompare(a.lastMessage?.created_at ?? ""));
