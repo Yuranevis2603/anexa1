@@ -136,6 +136,34 @@ export async function getFeedPage(
   return { items: rows.slice(0, pageSize), hasMore };
 }
 
+/**
+ * Server-paginated list of one member's own posts, newest first — powers
+ * the "Останні публікації" section on their profile page.
+ */
+export async function getUserActivityPage(
+  supabase: SupabaseClient,
+  { userId, page = 0, pageSize = FEED_PAGE_SIZE }: { userId: string; page?: number; pageSize?: number }
+): Promise<{ items: FeedItem[]; hasMore: boolean }> {
+  const from = page * pageSize;
+  const to = from + pageSize;
+
+  const { data, error } = await supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (error) {
+    console.error("getUserActivityPage failed:", error.message);
+    return { items: [], hasMore: false };
+  }
+
+  const rows = (data ?? []) as unknown as FeedItem[];
+  const hasMore = rows.length > pageSize;
+  return { items: rows.slice(0, pageSize), hasMore };
+}
+
 export async function getForYouPool(
   supabase: SupabaseClient,
   poolSize = FOR_YOU_POOL_SIZE

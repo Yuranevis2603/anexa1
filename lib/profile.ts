@@ -42,19 +42,43 @@ export async function getProfile(
 
 // Simple, transparent completeness score. Each field is worth an equal
 // share; extend this list if new editable profile fields are added.
+const COMPLETENESS_TEXT_FIELDS: (keyof Profile)[] = [
+  "full_name",
+  "role_title",
+  "company",
+  "avatar_url",
+  "bio",
+  "location",
+  "username",
+];
+const COMPLETENESS_ARRAY_FIELDS: (keyof Profile)[] = ["skills", "interests", "business_goals"];
+
 export function profileCompleteness(profile: Profile): number {
-  const fields: (keyof Profile)[] = [
-    "full_name",
-    "role_title",
-    "company",
-    "avatar_url",
-    "bio",
-  ];
-  const filled = fields.filter((f) => {
+  const textFilled = COMPLETENESS_TEXT_FIELDS.filter((f) => {
     const value = profile[f];
     return typeof value === "string" && value.trim().length > 0;
   }).length;
-  return Math.round((filled / fields.length) * 100);
+  const arrayFilled = COMPLETENESS_ARRAY_FIELDS.filter((f) => {
+    const value = profile[f];
+    return Array.isArray(value) && value.length > 0;
+  }).length;
+
+  const total = COMPLETENESS_TEXT_FIELDS.length + COMPLETENESS_ARRAY_FIELDS.length;
+  return Math.round(((textFilled + arrayFilled) / total) * 100);
+}
+
+/** "AI, Automation, CRM" -> ["AI", "Automation", "CRM"], trimmed and deduped. */
+export function parseTagInput(value: string): string[] {
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const raw of value.split(",")) {
+    const tag = raw.trim();
+    if (tag && !seen.has(tag.toLowerCase())) {
+      seen.add(tag.toLowerCase());
+      tags.push(tag);
+    }
+  }
+  return tags;
 }
 
 export function initials(fullName: string): string {

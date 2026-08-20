@@ -31,5 +31,5 @@ export default async function ProfilePage() {
     );
   }
 
-  return <ProfileView profile={profile} email={user.email ?? ""} />;
+  return <ProfileView profile={profile} email={user.email ?? ""} viewerId={user.id} />;
 }
