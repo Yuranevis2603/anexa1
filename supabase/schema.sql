@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-20.
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-20 (latest: AX privacy).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -690,10 +690,13 @@ create table if not exists public.profile_gamification (
 
 alter table public.profile_gamification enable row level security;
 
-create policy "profile_gamification_select_all"
+-- ax_points is private — only the owner can read their own row. Reputation/
+-- review_count/level are exposed publicly via the get_profile_public_stats()
+-- function instead (see Triggers & functions below).
+create policy "profile_gamification_select_own"
   on public.profile_gamification for select
   to authenticated
-  using (true);
+  using (user_id = (select auth.uid()));
 
 -- ============================================================================
 -- reviews
@@ -899,6 +902,37 @@ create trigger trg_sync_reviewee_reputation
   for each row execute function public.sync_reviewee_reputation();
 
 revoke execute on function public.sync_reviewee_reputation() from public, anon, authenticated;
+
+-- Narrow, deliberately-public read of profile_gamification for members other
+-- than the row's owner (whose select policy above blocks them otherwise):
+-- reputation/review_count/derived level+title, never the raw ax_points.
+-- A SECURITY DEFINER view would trip Supabase's linter at ERROR level for
+-- the same RLS-bypass pattern; a function is the safer, more auditable shape
+-- and EXECUTE is deliberately left granted here (unlike the trigger
+-- functions above) since this one is meant to be called directly.
+create or replace function public.get_profile_public_stats(p_user_id uuid)
+returns table (reputation numeric, review_count integer, level integer, level_title text)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    pg.reputation,
+    pg.review_count,
+    coalesce(
+      (select l.level from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
+      1
+    ) as level,
+    coalesce(
+      (select l.title from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
+      'Starter'
+    ) as level_title
+  from public.profile_gamification pg
+  where pg.user_id = p_user_id;
+$$;
+
+grant execute on function public.get_profile_public_stats(uuid) to authenticated;
 
 -- Project-level event trigger (public.rls_auto_enable) automatically runs
 -- `alter table ... enable row level security` on every newly created table

@@ -7,9 +7,12 @@ export type Level = {
 };
 
 export type ProfileStats = {
+  /** Real balance for the profile owner; 0 (RLS-blocked, never rendered) for anyone else viewing this profile. */
   ax_points: number;
   reputation: number | null;
   review_count: number;
+  level: number;
+  levelTitle: string;
 };
 
 export type LevelProgress = {
@@ -37,19 +40,33 @@ export async function getLevels(supabase: SupabaseClient): Promise<Level[]> {
   return cachedLevels;
 }
 
+/**
+ * ax_points is intentionally split from the rest: profile_gamification's
+ * RLS only lets the owner read their own row, so ax_points comes back 0 for
+ * anyone viewing someone else's profile (the UI never renders it in that
+ * case either — this is defense in depth, not the only guard). Reputation/
+ * review_count/level come from get_profile_public_stats, a SECURITY DEFINER
+ * RPC that deliberately exposes those columns to every member without
+ * exposing the raw AX balance.
+ */
 export async function getProfileStats(supabase: SupabaseClient, userId: string): Promise<ProfileStats> {
-  const { data, error } = await supabase
-    .from("profile_gamification")
-    .select("ax_points, reputation, review_count")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [{ data: ownRow, error: ownError }, { data: publicRows, error: publicError }] = await Promise.all([
+    supabase.from("profile_gamification").select("ax_points").eq("user_id", userId).maybeSingle(),
+    supabase.rpc("get_profile_public_stats", { p_user_id: userId }),
+  ]);
 
-  if (error || !data) {
-    if (error) console.error("getProfileStats failed:", error.message);
-    return { ax_points: 0, reputation: null, review_count: 0 };
-  }
+  if (ownError) console.error("getProfileStats (ax_points) failed:", ownError.message);
+  if (publicError) console.error("getProfileStats (public) failed:", publicError.message);
 
-  return data as ProfileStats;
+  const publicStats = (publicRows as { reputation: number | null; review_count: number; level: number; level_title: string }[] | null)?.[0];
+
+  return {
+    ax_points: (ownRow?.ax_points as number | undefined) ?? 0,
+    reputation: publicStats?.reputation ?? null,
+    review_count: publicStats?.review_count ?? 0,
+    level: publicStats?.level ?? 1,
+    levelTitle: publicStats?.level_title ?? "Starter",
+  };
 }
 
 /**

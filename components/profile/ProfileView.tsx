@@ -136,7 +136,13 @@ export default function ProfileView({
   const [activity, setActivity] = useState<FeedItem[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [stats, setStats] = useState<ProfileStats>({ ax_points: 0, reputation: null, review_count: 0 });
+  const [stats, setStats] = useState<ProfileStats>({
+    ax_points: 0,
+    reputation: null,
+    review_count: 0,
+    level: 1,
+    levelTitle: "Starter",
+  });
   const [levels, setLevels] = useState<Level[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
@@ -213,7 +219,13 @@ export default function ProfileView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.id]);
 
-  const levelProgress: LevelProgress = computeLevelProgress(stats.ax_points, levels);
+  // Only the owner has a real ax_points value to compute progress-to-next-level
+  // from (see getProfileStats) — for anyone else, show the accurate level/title
+  // from the public stats RPC without a percent ring that would leak how close
+  // to their raw AX balance they are.
+  const levelProgress: LevelProgress = viewerIsOwner
+    ? computeLevelProgress(stats.ax_points, levels)
+    : { level: stats.level, title: stats.levelTitle, progressPercent: 100, nextLevelAx: null };
 
   async function handleMessage() {
     if (!viewerId || startingChat) return;
@@ -416,7 +428,7 @@ export default function ProfileView({
       </section>
 
       {/* ---------------- METRICS ---------------- */}
-      <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className={`mt-4 grid grid-cols-1 gap-3 ${viewerIsOwner ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
         <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10">
             <Star size={17} className="text-gold" />
@@ -429,15 +441,17 @@ export default function ProfileView({
             </p>
           </div>
         </div>
-        <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue/10">
-            <Zap size={17} className="text-blue" />
+        {viewerIsOwner ? (
+          <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue/10">
+              <Zap size={17} className="text-blue" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">AX</p>
+              <p className="font-display text-lg font-semibold leading-tight text-ink-primary">{stats.ax_points.toLocaleString("uk-UA")}</p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">AX</p>
-            <p className="font-display text-lg font-semibold leading-tight text-ink-primary">{stats.ax_points.toLocaleString("uk-UA")}</p>
-          </div>
-        </div>
+        ) : null}
         <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
           <Ring size={40} thickness={2.5} percent={levelProgress.progressPercent}>
             <div className="flex h-full w-full items-center justify-center rounded-full bg-base-card">
