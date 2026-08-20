@@ -40,6 +40,35 @@ export async function getProfile(
   return data as Profile;
 }
 
+const MAX_AVATAR_BYTES = 5 * 1024 * 1024;
+
+/** Uploads a profile photo picked from the device (file browser or, on
+ * mobile, the OS gallery/camera sheet — both come free with input type="file")
+ * to the public 'avatars' bucket and returns its public URL. */
+export async function uploadAvatar(
+  supabase: SupabaseClient,
+  userId: string,
+  file: File
+): Promise<string> {
+  if (file.size > MAX_AVATAR_BYTES) {
+    throw new Error("Зображення завелике (максимум 5 МБ).");
+  }
+
+  const ext = file.name.split(".").pop()?.toLowerCase() || "jpg";
+  const path = `${userId}/${crypto.randomUUID()}.${ext}`;
+
+  const { error } = await supabase.storage
+    .from("avatars")
+    .upload(path, file, { cacheControl: "3600", upsert: false });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  const { data } = supabase.storage.from("avatars").getPublicUrl(path);
+  return data.publicUrl;
+}
+
 // Simple, transparent completeness score. Each field is worth an equal
 // share; extend this list if new editable profile fields are added.
 const COMPLETENESS_TEXT_FIELDS: (keyof Profile)[] = [

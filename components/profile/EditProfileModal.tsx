@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { Loader2, X } from "lucide-react";
+import { useRef, useState } from "react";
+import { ImagePlus, Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/profile";
+import { initials, uploadAvatar, type Profile } from "@/lib/profile";
 import TagInput from "./TagInput";
 
 type EditableFields = {
@@ -47,6 +47,32 @@ export default function EditProfileModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarCleared, setAvatarCleared] = useState(false);
+
+  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError("Зображення завелике (максимум 5 МБ).");
+      return;
+    }
+    setAvatarFile(file);
+    setAvatarPreview(URL.createObjectURL(file));
+    setAvatarCleared(false);
+  }
+
+  function removeAvatar() {
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setAvatarCleared(true);
+  }
+
+  const avatarDisplayUrl = avatarPreview ?? (avatarCleared ? null : form.avatar_url || null);
+
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
     if (!form.full_name.trim()) {
@@ -58,11 +84,23 @@ export default function EditProfileModal({
     setError(null);
 
     const supabase = createClient();
+
+    let avatarUrl = avatarCleared ? null : form.avatar_url.trim() || null;
+    if (avatarFile) {
+      try {
+        avatarUrl = await uploadAvatar(supabase, profile.id, avatarFile);
+      } catch (err) {
+        setSaving(false);
+        setError(err instanceof Error ? err.message : "Не вдалося завантажити фото.");
+        return;
+      }
+    }
+
     const payload = {
       full_name: form.full_name.trim(),
       role_title: form.role_title.trim() || null,
       company: form.company.trim() || null,
-      avatar_url: form.avatar_url.trim() || null,
+      avatar_url: avatarUrl,
       bio: form.bio.trim() || null,
       location: form.location.trim() || null,
       skills: form.skills,
@@ -131,12 +169,45 @@ export default function EditProfileModal({
               onChange={(v) => setForm({ ...form, location: v })}
               placeholder="напр. Київ, Україна"
             />
-            <Field
-              label="URL фото профілю"
-              value={form.avatar_url}
-              onChange={(v) => setForm({ ...form, avatar_url: v })}
-              placeholder="https://..."
-              type="url"
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12.5px] font-medium text-ink-secondary">Фото профілю</label>
+            <div className="flex items-center gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-full border border-border-subtle bg-white/[0.04] text-lg font-semibold text-ink-primary">
+                {avatarDisplayUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={avatarDisplayUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  initials(form.full_name || "?")
+                )}
+              </div>
+              <div className="flex flex-col items-start gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle bg-white/[0.04] px-3 py-1.5 text-[12.5px] font-medium text-ink-primary transition-colors hover:bg-white/[0.07]"
+                >
+                  <ImagePlus size={14} />
+                  {avatarDisplayUrl ? "Змінити фото" : "Завантажити фото"}
+                </button>
+                {avatarDisplayUrl ? (
+                  <button
+                    type="button"
+                    onClick={removeAvatar}
+                    className="text-[12px] font-medium text-ink-tertiary transition-colors hover:text-danger"
+                  >
+                    Прибрати фото
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleAvatarChange}
+              className="hidden"
             />
           </div>
 
