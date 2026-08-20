@@ -37,25 +37,14 @@ import {
   type LevelProgress,
   type ProfileStats,
 } from "@/lib/gamification";
-import { getUserActivity, postTypeMeta, type FeedItem } from "@/lib/feed";
+import { getUserActivity, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
 import { getProjects, type Project } from "@/lib/projects";
 import { useToast } from "@/components/ui/ToastProvider";
 import EditProfileModal from "./EditProfileModal";
 import CreateProjectModal from "./CreateProjectModal";
 import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
-
-function timeAgo(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const minutes = Math.floor(diffMs / 60000);
-  if (minutes < 1) return "щойно";
-  if (minutes < 60) return `${minutes} хв тому`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} год тому`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} дн тому`;
-  return new Date(iso).toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
-}
+import PostCard from "@/components/feed/PostCard";
 
 function Ring({
   size = 76,
@@ -130,12 +119,10 @@ function EmptyHint({ text, cta, onClick }: { text: string; cta?: string; onClick
 
 export default function ProfileView({
   profile,
-  email,
   viewerIsOwner = true,
   viewerId,
 }: {
   profile: Profile;
-  email?: string;
   viewerIsOwner?: boolean;
   viewerId?: string;
 }) {
@@ -147,6 +134,8 @@ export default function ProfileView({
 
   const [projects, setProjects] = useState<Project[]>([]);
   const [activity, setActivity] = useState<FeedItem[]>([]);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<ProfileStats>({ ax_points: 0, reputation: null, review_count: 0 });
   const [levels, setLevels] = useState<Level[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
@@ -192,6 +181,17 @@ export default function ProfileView({
       setStats(statsData);
       setLevels(levelsData);
       setLoadingSections(false);
+
+      if (viewerId && activityData.length > 0) {
+        const ids = activityData.map((item) => item.id);
+        const [liked, saved] = await Promise.all([
+          getUserLikes(supabase, viewerId, ids),
+          getUserSaves(supabase, viewerId, ids),
+        ]);
+        if (cancelled) return;
+        setLikedIds(liked);
+        setSavedIds(saved);
+      }
 
       if (canInteract && viewerId) {
         const [isFollow, isBlock, reviewed] = await Promise.all([
@@ -293,7 +293,7 @@ export default function ProfileView({
   return (
     <div className="mx-auto max-w-3xl">
       {/* ---------------- HEADER ---------------- */}
-      <section className="glass relative overflow-hidden rounded-2xl border border-border-subtle p-6 sm:p-7">
+      <section className="glass relative rounded-2xl border border-border-subtle p-6 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <Ring size={84} thickness={2.5} percent={completeness}>
             <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-base-card text-xl font-semibold text-ink-primary">
@@ -322,7 +322,6 @@ export default function ProfileView({
                   <MapPin size={12} /> {current.location}
                 </span>
               ) : null}
-              {viewerIsOwner && email ? <span className="text-[12px] text-ink-tertiary">{email}</span> : null}
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -527,27 +526,25 @@ export default function ProfileView({
             {loadingSections ? (
               <div className="flex flex-col gap-3">
                 {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-4 w-4/5 animate-pulse rounded bg-white/[0.04]" />
+                  <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />
                 ))}
               </div>
             ) : activity.length === 0 ? (
               <p className="text-[13.5px] text-ink-tertiary">Активності поки немає.</p>
+            ) : !viewerId ? (
+              <p className="text-[13.5px] text-ink-tertiary">Увійдіть, щоб переглянути активність.</p>
             ) : (
-              <div className="flex flex-col gap-4">
-                {activity.map((item) => {
-                  const meta = postTypeMeta(item.post_type);
-                  return (
-                    <div key={item.id} className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border-subtle bg-white/[0.04] text-[13px]">
-                        {meta?.emoji ?? "📝"}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="line-clamp-2 text-[13px] text-ink-primary">{item.body}</p>
-                        <p className="mt-0.5 text-[11.5px] text-ink-tertiary">{timeAgo(item.created_at)}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="flex flex-col gap-3">
+                {activity.map((item) => (
+                  <PostCard
+                    key={item.id}
+                    item={item}
+                    userId={viewerId}
+                    initiallyLiked={likedIds.has(item.id)}
+                    initiallySaved={savedIds.has(item.id)}
+                    onDeleted={(id) => setActivity((prev) => prev.filter((a) => a.id !== id))}
+                  />
+                ))}
               </div>
             )}
           </SectionCard>
@@ -639,6 +636,11 @@ export default function ProfileView({
             setCurrent(updated);
             setEditModalOpen(false);
             router.refresh();
+            // The completion-bonus trigger runs server-side on this same
+            // update, so the new AX/level are already in place — just
+            // re-fetch to reflect them without waiting for a remount.
+            const supabase = createClient();
+            getProfileStats(supabase, updated.id).then(setStats);
           }}
         />
       ) : null}
