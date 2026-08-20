@@ -99,6 +99,27 @@ export type FeedComment = {
 const FEED_SELECT =
   "id, user_id, type, post_type, body, image_url, category, budget, work_format, cta_type, like_count, comment_count, created_at, author:profiles!activity_items_user_id_fkey(full_name, avatar_url, role_title, username, membership_tier)";
 
+/** Small "recent activity" feed for a single member's own profile page. */
+export async function getUserActivity(
+  supabase: SupabaseClient,
+  userId: string,
+  limit = 6
+): Promise<FeedItem[]> {
+  const { data, error } = await supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("getUserActivity failed:", error.message);
+    return [];
+  }
+
+  return (data ?? []) as unknown as FeedItem[];
+}
+
 export const FEED_PAGE_SIZE = 10;
 // "Для тебе" ranks within a bounded pool instead of the whole table — keeps
 // the personalization pass cheap while still avoiding "load everything".

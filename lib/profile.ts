@@ -42,19 +42,28 @@ export async function getProfile(
 
 // Simple, transparent completeness score. Each field is worth an equal
 // share; extend this list if new editable profile fields are added.
+const COMPLETENESS_TEXT_FIELDS: (keyof Profile)[] = [
+  "full_name",
+  "role_title",
+  "company",
+  "avatar_url",
+  "bio",
+  "location",
+];
+const COMPLETENESS_LIST_FIELDS: (keyof Profile)[] = ["skills", "business_goals", "interests", "industries"];
+
 export function profileCompleteness(profile: Profile): number {
-  const fields: (keyof Profile)[] = [
-    "full_name",
-    "role_title",
-    "company",
-    "avatar_url",
-    "bio",
-  ];
-  const filled = fields.filter((f) => {
+  const textFilled = COMPLETENESS_TEXT_FIELDS.filter((f) => {
     const value = profile[f];
     return typeof value === "string" && value.trim().length > 0;
   }).length;
-  return Math.round((filled / fields.length) * 100);
+  const listFilled = COMPLETENESS_LIST_FIELDS.filter((f) => {
+    const value = profile[f];
+    return Array.isArray(value) && value.length > 0;
+  }).length;
+
+  const total = COMPLETENESS_TEXT_FIELDS.length + COMPLETENESS_LIST_FIELDS.length;
+  return Math.round(((textFilled + listFilled) / total) * 100);
 }
 
 export function initials(fullName: string): string {

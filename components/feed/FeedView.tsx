@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initials, type Profile } from "@/lib/profile";
 import type { MatchCandidate } from "@/lib/match";
+import { getBlockedUserIds } from "@/lib/moderation";
 import {
   FEED_FILTERS,
   FEED_PAGE_SIZE,
@@ -69,6 +70,7 @@ export default function FeedView({
   const forYouPoolRef = useRef<FeedItem[]>([]);
   const requestIdRef = useRef(0);
   const loadingMoreRef = useRef(false);
+  const blockedIdsRef = useRef<Set<string>>(new Set());
 
   const loadFirstPage = useCallback(
     async (targetFilter: FeedFilter) => {
@@ -78,21 +80,24 @@ export default function FeedView({
 
       try {
         const supabase = createClient();
+        blockedIdsRef.current = await getBlockedUserIds(supabase, userId);
         let pageItems: FeedItem[];
         let more: boolean;
 
         if (targetFilter === "for_you") {
-          const pool = personalizeFeed(await getForYouPool(supabase), profile);
+          const pool = personalizeFeed(await getForYouPool(supabase), profile).filter(
+            (i) => !blockedIdsRef.current.has(i.user_id)
+          );
           forYouPoolRef.current = pool;
           pageItems = pool.slice(0, FEED_PAGE_SIZE);
           more = pool.length > FEED_PAGE_SIZE;
         } else if (targetFilter === "saved") {
           const result = await getSavedFeedPage(supabase, { userId, page: 0 });
-          pageItems = result.items;
+          pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         } else {
           const result = await getFeedPage(supabase, { filter: targetFilter, page: 0 });
-          pageItems = result.items;
+          pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         }
 
@@ -144,11 +149,11 @@ export default function FeedView({
         more = start + FEED_PAGE_SIZE < pool.length;
       } else if (filter === "saved") {
         const result = await getSavedFeedPage(supabase, { userId, page: nextPage });
-        nextItems = result.items;
+        nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       } else {
         const result = await getFeedPage(supabase, { filter, page: nextPage });
-        nextItems = result.items;
+        nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       }
 
