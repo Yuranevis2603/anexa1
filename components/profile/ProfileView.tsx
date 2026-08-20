@@ -25,7 +25,7 @@ import { initials, parseTagInput, profileCompleteness, type Profile } from "@/li
 import { getOrCreateConversation } from "@/lib/messages";
 import { requestConnection } from "@/lib/connections";
 import { getFollowCounts, isFollowing as fetchIsFollowing, toggleFollow, type FollowCounts } from "@/lib/follows";
-import { deleteProject, getUserProjects, projectStatusLabel, type Project } from "@/lib/projects";
+import { deleteProject, getUserProjects, projectStatusLabel, safeExternalUrl, type Project } from "@/lib/projects";
 import { getUserActivityPage, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
 import { useToast } from "@/components/ui/ToastProvider";
 import AddProjectModal from "@/components/profile/AddProjectModal";
@@ -439,27 +439,41 @@ export default function ProfileView({
                       {viewerIsOwner ? (
                         <button
                           type="button"
-                          onClick={() =>
-                            confirmingProjectId === project.id
-                              ? handleDeleteProject(project.id)
-                              : setConfirmingProjectId(project.id)
-                          }
-                          disabled={deletingProjectId === project.id}
+                          onClick={() => setConfirmingProjectId(project.id)}
                           aria-label="Видалити проєкт"
-                          className={`shrink-0 rounded-md p-1 transition-colors ${
-                            confirmingProjectId === project.id
-                              ? "text-danger"
-                              : "text-ink-tertiary hover:text-danger"
-                          }`}
+                          className="shrink-0 rounded-md p-1 text-ink-tertiary transition-colors hover:text-danger"
                         >
-                          {deletingProjectId === project.id ? (
-                            <Loader2 size={13} className="animate-spin" />
-                          ) : (
-                            <Trash2 size={13} />
-                          )}
+                          <Trash2 size={13} />
                         </button>
                       ) : null}
                     </div>
+
+                    {confirmingProjectId === project.id ? (
+                      <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-danger/30 bg-danger/[0.06] px-2.5 py-1.5">
+                        <p className="text-[11.5px] text-ink-secondary">Видалити цей проєкт?</p>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmingProjectId(null)}
+                            className="rounded-md px-2 py-1 text-[11px] font-medium text-ink-secondary hover:bg-white/[0.06]"
+                          >
+                            Скасувати
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(project.id)}
+                            disabled={deletingProjectId === project.id}
+                            className="flex items-center gap-1 rounded-md bg-danger px-2 py-1 text-[11px] font-medium text-white disabled:opacity-60"
+                          >
+                            {deletingProjectId === project.id ? (
+                              <Loader2 size={11} className="animate-spin" />
+                            ) : null}
+                            Видалити
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+
                     {project.description ? (
                       <p className="mt-1.5 line-clamp-3 text-[12.5px] leading-relaxed text-ink-secondary">
                         {project.description}
@@ -481,9 +495,9 @@ export default function ProfileView({
                           {project.team_size}
                         </span>
                       ) : null}
-                      {project.link_url ? (
+                      {safeExternalUrl(project.link_url) ? (
                         <a
-                          href={project.link_url}
+                          href={safeExternalUrl(project.link_url)!}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="ml-auto flex items-center gap-1 text-[11px] text-purple-soft hover:text-purple"

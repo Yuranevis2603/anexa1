@@ -23,6 +23,21 @@ export function projectStatusLabel(status: ProjectStatus): string {
   return PROJECT_STATUSES.find((s) => s.value === status)?.label ?? status;
 }
 
+/**
+ * Only renders a project link if it's http(s) — link_url is free-text
+ * written by whoever owns the project and read by any authenticated member,
+ * so a javascript: URI here would be a stored XSS vector against viewers.
+ */
+export function safeExternalUrl(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? url : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getUserProjects(
   supabase: SupabaseClient,
   userId: string
