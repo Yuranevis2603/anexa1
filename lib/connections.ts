@@ -73,6 +73,52 @@ export async function getIncomingConnectionCount(supabase: SupabaseClient, userI
   return count ?? 0;
 }
 
+export type ConnectionState =
+  | { status: "none" }
+  | { status: "pending_sent" }
+  | { status: "pending_received"; connectionId: string }
+  | { status: "connected" };
+
+/** Where things stand between `viewerId` and `targetId` — powers the
+ * "Співпраця" button on a profile so it doesn't just fire duplicate
+ * requests. At most two rows can exist for a pair (the unique constraint is
+ * per-direction), so this never needs pagination. */
+export async function getConnectionState(
+  supabase: SupabaseClient,
+  viewerId: string,
+  targetId: string
+): Promise<ConnectionState> {
+  const { data, error } = await supabase
+    .from("connections")
+    .select("id, requester_id, status")
+    .or(
+      `and(requester_id.eq.${viewerId},addressee_id.eq.${targetId}),and(requester_id.eq.${targetId},addressee_id.eq.${viewerId})`
+    );
+
+  if (error) {
+    console.error("getConnectionState failed:", error.message);
+    return { status: "none" };
+  }
+
+  const rows = (data ?? []) as { id: string; requester_id: string; status: string }[];
+
+  if (rows.some((r) => r.status === "accepted")) {
+    return { status: "connected" };
+  }
+
+  const sentByViewer = rows.find((r) => r.requester_id === viewerId && r.status === "pending");
+  if (sentByViewer) {
+    return { status: "pending_sent" };
+  }
+
+  const receivedFromTarget = rows.find((r) => r.requester_id === targetId && r.status === "pending");
+  if (receivedFromTarget) {
+    return { status: "pending_received", connectionId: receivedFromTarget.id };
+  }
+
+  return { status: "none" };
+}
+
 export async function acceptConnection(supabase: SupabaseClient, connectionId: string): Promise<void> {
   const { error } = await supabase.from("connections").update({ status: "accepted" }).eq("id", connectionId);
   if (error) {

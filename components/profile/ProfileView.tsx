@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Ban,
   BadgeCheck,
+  Check,
   Flag,
   FolderKanban,
   Handshake,
@@ -25,7 +26,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { initials, profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
-import { requestConnection } from "@/lib/connections";
+import { acceptConnection, getConnectionState, requestConnection, type ConnectionState } from "@/lib/connections";
 import { follow, isFollowing, unfollow } from "@/lib/follows";
 import { blockUser, isUserBlocked, unblockUser } from "@/lib/moderation";
 import {
@@ -147,6 +148,8 @@ export default function ProfileView({
   const [loadingSections, setLoadingSections] = useState(true);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
+  const [connectionState, setConnectionState] = useState<ConnectionState>({ status: "none" });
+  const [connectionLoading, setConnectionLoading] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
   const [blocked, setBlocked] = useState(false);
@@ -200,15 +203,17 @@ export default function ProfileView({
       }
 
       if (canInteract && viewerId) {
-        const [isFollow, isBlock, reviewed] = await Promise.all([
+        const [isFollow, isBlock, reviewed, connState] = await Promise.all([
           isFollowing(supabase, viewerId, current.id),
           isUserBlocked(supabase, viewerId, current.id),
           getMyReviewOf(supabase, viewerId, current.id),
+          getConnectionState(supabase, viewerId, current.id),
         ]);
         if (cancelled) return;
         setFollowing(isFollow);
         setBlocked(isBlock);
         setHasReviewed(reviewed);
+        setConnectionState(connState);
       }
     }
 
@@ -242,13 +247,34 @@ export default function ProfileView({
   }
 
   async function handleCollaborate() {
-    if (!viewerId) return;
+    if (!viewerId || connectionLoading || connectionState.status !== "none") return;
+    setConnectionLoading(true);
     try {
       const supabase = createClient();
       await requestConnection(supabase, viewerId, current.id);
+      setConnectionState({ status: "pending_sent" });
       showToast("success", "Запит на співпрацю надіслано.");
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Не вдалося надіслати запит.");
+    } finally {
+      setConnectionLoading(false);
+    }
+  }
+
+  async function handleAcceptConnection() {
+    if (connectionLoading || connectionState.status !== "pending_received") return;
+    setConnectionLoading(true);
+    try {
+      const supabase = createClient();
+      await acceptConnection(supabase, connectionState.connectionId);
+      setConnectionState({ status: "connected" });
+      showToast("success", `Тепер ви знайомі з ${current.full_name}.`);
+      router.refresh(); // keeps the sidebar's pending-requests badge in sync
+    } catch (err) {
+      showToast("error", "Не вдалося прийняти запит.");
+      console.error("acceptConnection failed:", err);
+    } finally {
+      setConnectionLoading(false);
     }
   }
 
@@ -354,12 +380,30 @@ export default function ProfileView({
                     {startingChat ? <Loader2 size={14} className="animate-spin" /> : <MessageCircle size={14} />}
                     Написати
                   </button>
-                  <button
-                    onClick={handleCollaborate}
-                    className="flex items-center gap-1.5 rounded-xl border border-border-subtle bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-ink-primary transition-colors hover:bg-white/[0.07]"
-                  >
-                    <Handshake size={14} /> Співпраця
-                  </button>
+                  {connectionState.status === "pending_received" ? (
+                    <button
+                      onClick={handleAcceptConnection}
+                      disabled={connectionLoading}
+                      className="flex items-center gap-1.5 rounded-xl bg-grad-purple-blue px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                      {connectionLoading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+                      Прийняти запит
+                    </button>
+                  ) : connectionState.status === "pending_sent" || connectionState.status === "connected" ? (
+                    <span className="flex items-center gap-1.5 rounded-xl border border-border-subtle px-4 py-2 text-[13px] font-medium text-ink-tertiary">
+                      <Check size={14} />
+                      {connectionState.status === "connected" ? "Ви знайомі" : "Запит надіслано"}
+                    </span>
+                  ) : (
+                    <button
+                      onClick={handleCollaborate}
+                      disabled={connectionLoading}
+                      className="flex items-center gap-1.5 rounded-xl border border-border-subtle bg-white/[0.04] px-4 py-2 text-[13px] font-medium text-ink-primary transition-colors hover:bg-white/[0.07] disabled:opacity-60"
+                    >
+                      {connectionLoading ? <Loader2 size={14} className="animate-spin" /> : <Handshake size={14} />}
+                      Співпраця
+                    </button>
+                  )}
                   <button
                     onClick={handleToggleFollow}
                     disabled={followLoading}
