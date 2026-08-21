@@ -2,7 +2,8 @@
 
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { Home, Users, MessageCircle, User, Settings, Bookmark, X } from "lucide-react";
+import Image from "next/image";
+import { Home, Users, MessageCircle, User, Settings, Bookmark, UserPlus, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -11,11 +12,17 @@ type NavItem = {
   badge?: number;
 };
 
-function buildPrimaryNav(unreadMessages: number): NavItem[] {
+function buildPrimaryNav(unreadMessages: number, pendingConnections: number): NavItem[] {
   return [
     { label: "Головна", href: "/dashboard", icon: Home },
     { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
     { label: "Люди", href: "/dashboard/people", icon: Users },
+    {
+      label: "Запити на знайомство",
+      href: "/dashboard/connections",
+      icon: UserPlus,
+      badge: pendingConnections > 0 ? pendingConnections : undefined,
+    },
     {
       label: "Повідомлення",
       href: "/dashboard/messages",
@@ -63,13 +70,15 @@ export default function Sidebar({
   open = false,
   onClose,
   unreadMessages = 0,
+  pendingConnections = 0,
 }: {
   open?: boolean;
   onClose?: () => void;
   unreadMessages?: number;
+  pendingConnections?: number;
 }) {
   const activePath = usePathname();
-  const primaryNav = buildPrimaryNav(unreadMessages);
+  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections);
 
   return (
     <aside
@@ -78,18 +87,14 @@ export default function Sidebar({
         (open ? "translate-x-0" : "-translate-x-full")
       }
     >
-      <div className="mb-6 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-grad-purple-blue text-sm font-bold text-white shadow-glow-purple">
-            A
-          </div>
-          <span className="font-display text-[15px] font-semibold text-ink-primary">Anexa Club</span>
-        </div>
+      <div className="relative mb-6 flex items-center justify-center px-2">
+        <Image src="/anexa-logo-wordmark.png" alt="ANEXA" width={118} height={36} className="h-9 w-auto" priority />
+
         <button
           type="button"
           onClick={onClose}
           aria-label="Закрити меню"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
         >
           <X size={18} />
         </button>

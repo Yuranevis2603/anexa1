@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   Bookmark,
@@ -13,10 +13,11 @@ import {
   Share2,
   Trash2,
 } from "lucide-react";
-import { initials } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import { getOrCreateConversation } from "@/lib/messages";
+import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 import {
   createComment,
   ctaLabel,
@@ -247,21 +248,21 @@ export default function PostCard({
     <article className="glass rounded-2xl border border-border-subtle p-4">
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <Link href={profileHref} className="shrink-0">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white">
-              {item.author?.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.author.avatar_url} alt={name} className="h-full w-full object-cover" />
-              ) : (
-                initials(name)
-              )}
+          <ProfilePreviewCard userId={item.user_id} isOwn={isOwn}>
+            <div className="shrink-0">
+              <Avatar
+                src={item.author?.avatar_url}
+                name={name}
+                size={36}
+                className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
+              />
             </div>
-          </Link>
+          </ProfilePreviewCard>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-x-1.5">
-              <Link href={profileHref} className="truncate text-[13.5px] font-medium text-ink-primary hover:underline">
-                {name}
-              </Link>
+              <ProfilePreviewCard userId={item.user_id} isOwn={isOwn}>
+                <span className="truncate text-[13.5px] font-medium text-ink-primary hover:underline">{name}</span>
+              </ProfilePreviewCard>
               {item.author?.membership_tier === "black" ? (
                 <span className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-secondary">
                   Black
@@ -344,8 +345,14 @@ export default function PostCard({
 
       {item.image_url ? (
         <div className="mt-3 overflow-hidden rounded-xl border border-border-subtle">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.image_url} alt="" loading="lazy" className="max-h-96 w-full object-cover" />
+          <Image
+            src={item.image_url}
+            alt=""
+            width={1200}
+            height={800}
+            sizes="(max-width: 640px) 100vw, 640px"
+            className="max-h-96 w-full object-cover"
+          />
         </div>
       ) : null}
 
@@ -430,29 +437,27 @@ export default function PostCard({
           ) : comments && comments.length > 0 ? (
             comments.map((comment) => {
               const commentName = comment.author?.full_name ?? "Учасник ANEXA";
-              const commentProfileHref =
-                comment.user_id === userId ? "/dashboard/profile" : `/dashboard/people/${comment.user_id}`;
+              const commentIsOwn = comment.user_id === userId;
               return (
                 <div key={comment.id} className="flex items-start gap-2.5">
-                  <Link href={commentProfileHref} className="shrink-0">
-                    <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white">
-                      {comment.author?.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={comment.author.avatar_url} alt={commentName} className="h-full w-full object-cover" />
-                      ) : (
-                        initials(commentName)
-                      )}
+                  <ProfilePreviewCard userId={comment.user_id} isOwn={commentIsOwn}>
+                    <div className="shrink-0">
+                      <Avatar
+                        src={comment.author?.avatar_url}
+                        name={commentName}
+                        size={28}
+                        className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white"
+                      />
                     </div>
-                  </Link>
+                  </ProfilePreviewCard>
                   <div className="min-w-0 flex-1 rounded-xl bg-base-surface px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex min-w-0 items-center gap-2">
-                        <Link
-                          href={commentProfileHref}
-                          className="truncate text-[12.5px] font-medium text-ink-primary hover:underline"
-                        >
-                          {commentName}
-                        </Link>
+                        <ProfilePreviewCard userId={comment.user_id} isOwn={commentIsOwn}>
+                          <span className="truncate text-[12.5px] font-medium text-ink-primary hover:underline">
+                            {commentName}
+                          </span>
+                        </ProfilePreviewCard>
                         <p className="shrink-0 text-[11px] text-ink-tertiary">{timeAgo(comment.created_at)}</p>
                       </div>
                       {comment.user_id === userId ? (

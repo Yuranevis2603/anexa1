@@ -218,8 +218,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
       <aside className="brand-panel">
         <div className="brand-top">
           <div className="logo-row">
-            <Image className="logo-mark" src="/anexa-logo.png" alt="ANEXA" width={34} height={34} />
-            <span className="logo-word">ANEXA</span>
+            <Image className="logo-wordmark" src="/anexa-logo-wordmark.png" alt="ANEXA" width={111} height={34} priority />
           </div>
         </div>
 
@@ -265,8 +264,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
       <main className="auth-panel">
         <div className="card-wrap">
           <div className="mobile-brand">
-            <Image className="logo-mark" src="/anexa-logo.png" alt="ANEXA" width={46} height={46} />
-            <span className="logo-word">ANEXA</span>
+            <Image className="logo-wordmark" src="/anexa-logo-wordmark.png" alt="ANEXA" width={151} height={46} priority />
             <p className="brand-sub-mobile">Простір, де амбітні люди будують майбутнє.</p>
           </div>
 
@@ -651,8 +649,7 @@ const styles = `
 
   .brand-top{ position:relative; z-index:2; }
   .logo-row{ display:flex; align-items:center; gap:12px; }
-  .logo-mark{ display:block; object-fit:contain; filter: drop-shadow(0 4px 16px rgba(108,124,246,0.5)); }
-  .logo-word{ font-size:17px; font-weight:600; letter-spacing: 0.02em; }
+  .logo-wordmark{ display:block; object-fit:contain; filter: drop-shadow(0 4px 16px rgba(108,124,246,0.5)); }
 
   .brand-mid{ position:relative; z-index:2; max-width:400px; }
   .brand-eyebrow{ font-size:12px; font-weight:600; letter-spacing:0.12em; text-transform:uppercase; color: var(--accent-2); margin-bottom:18px; }
@@ -811,8 +808,7 @@ const styles = `
     .mobile-brand{
       display:flex; flex-direction:column; align-items:center; width:100%; margin:18px 0 26px;
     }
-    .mobile-brand .logo-mark{ margin-bottom:14px; }
-    .mobile-brand .logo-word{ font-size:18px; margin-bottom:6px; }
+    .mobile-brand .logo-wordmark{ margin-bottom:14px; }
     .mobile-brand .brand-sub-mobile{ font-size:13px; color: var(--text-secondary); text-align:center; max-width:280px; }
     .card{ padding:28px 22px; }
     .name-row{ flex-direction:column; gap:16px; }

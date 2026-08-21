@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-19.
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-21 (latest: consolidated ProfileView RPCs).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -644,6 +644,176 @@ create policy "messages_insert_participant"
   );
 
 -- ============================================================================
+-- levels
+-- Reference ladder for the AX -> level display on profiles. Seeded once;
+-- no client insert/update policy — managed via migration only.
+-- ============================================================================
+create table if not exists public.levels (
+  level integer primary key,
+  title text not null,
+  min_ax integer not null unique
+);
+
+alter table public.levels enable row level security;
+
+create policy "levels_select_all"
+  on public.levels for select
+  to authenticated
+  using (true);
+
+insert into public.levels (level, title, min_ax) values
+  (1, 'Starter', 0),
+  (2, 'Explorer', 100),
+  (3, 'Builder', 300),
+  (4, 'Connector', 600),
+  (5, 'Achiever', 1000),
+  (6, 'Expert', 1500),
+  (7, 'Leader', 2200),
+  (8, 'Visionary', 3000)
+on conflict (level) do nothing;
+
+-- ============================================================================
+-- profile_gamification
+-- One row per profile: AX points + aggregated reputation. Written only by
+-- the security-definer triggers below (sync_profile_completion_bonus,
+-- sync_reviewee_reputation) — never directly by the client, so a member
+-- can't self-award AX or fake their rating via the REST/JS API.
+-- ============================================================================
+create table if not exists public.profile_gamification (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  ax_points integer not null default 0,
+  reputation numeric(3,2),
+  review_count integer not null default 0,
+  profile_completion_bonus_awarded boolean not null default false,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.profile_gamification enable row level security;
+
+-- ax_points is private — only the owner can read their own row. Reputation/
+-- review_count/level are exposed publicly via the get_profile_public_stats()
+-- function instead (see Triggers & functions below).
+create policy "profile_gamification_select_own"
+  on public.profile_gamification for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
+-- ============================================================================
+-- ax_events
+-- Audit ledger for every AX award: what it was for, how much, and when.
+-- Also what the daily-cap check in award_ax() counts against (see Triggers
+-- & functions below). Read-only to the client (own rows only) — never
+-- written directly, only by triggers.
+-- ============================================================================
+create table if not exists public.ax_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  source text not null check (source in (
+    'profile_completion', 'post', 'like_received', 'comment_received',
+    'connection_accepted', 'follower_received', 'project_added', 'review_received'
+  )),
+  amount integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ax_events_user_source_time on public.ax_events (user_id, source, created_at);
+
+alter table public.ax_events enable row level security;
+
+create policy "ax_events_select_own"
+  on public.ax_events for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
+-- ============================================================================
+-- reviews
+-- One rating a member can leave per person they've interacted with.
+-- reviewee_id's aggregated reputation/review_count is kept in sync by the
+-- sync_reviewee_reputation trigger below.
+-- ============================================================================
+create table if not exists public.reviews (
+  id uuid primary key default gen_random_uuid(),
+  reviewer_id uuid not null references public.profiles(id),
+  reviewee_id uuid not null references public.profiles(id),
+  rating integer not null check (rating between 1 and 5),
+  comment text,
+  created_at timestamptz not null default now(),
+  constraint reviews_no_self_review check (reviewer_id <> reviewee_id),
+  constraint reviews_one_per_pair unique (reviewer_id, reviewee_id)
+);
+
+create index if not exists idx_reviews_reviewee_id on public.reviews (reviewee_id);
+
+alter table public.reviews enable row level security;
+
+create policy "reviews_select_all"
+  on public.reviews for select
+  to authenticated
+  using (true);
+
+create policy "reviews_insert_own"
+  on public.reviews for insert
+  to public
+  with check (reviewer_id = (select auth.uid()));
+
+-- ============================================================================
+-- user_blocks
+-- One-directional block list. Only the blocker can see their own rows (used
+-- to filter their own Feed) — this is not a public graph like follows.
+-- ============================================================================
+create table if not exists public.user_blocks (
+  blocker_id uuid not null references public.profiles(id),
+  blocked_id uuid not null references public.profiles(id),
+  created_at timestamptz not null default now(),
+  primary key (blocker_id, blocked_id),
+  constraint user_blocks_no_self_block check (blocker_id <> blocked_id)
+);
+
+alter table public.user_blocks enable row level security;
+
+create policy "user_blocks_select_own"
+  on public.user_blocks for select
+  to public
+  using (blocker_id = (select auth.uid()));
+
+create policy "user_blocks_insert_own"
+  on public.user_blocks for insert
+  to public
+  with check (blocker_id = (select auth.uid()));
+
+create policy "user_blocks_delete_own"
+  on public.user_blocks for delete
+  to public
+  using (blocker_id = (select auth.uid()));
+
+-- ============================================================================
+-- user_reports
+-- Member-filed reports. Reporter can see their own submissions; reviewing
+-- reports across all members is a moderator/service-role job, not exposed
+-- to the client.
+-- ============================================================================
+create table if not exists public.user_reports (
+  id uuid primary key default gen_random_uuid(),
+  reporter_id uuid not null references public.profiles(id),
+  reported_id uuid not null references public.profiles(id),
+  reason text not null,
+  created_at timestamptz not null default now(),
+  constraint user_reports_no_self_report check (reporter_id <> reported_id)
+);
+
+alter table public.user_reports enable row level security;
+
+create policy "user_reports_select_own"
+  on public.user_reports for select
+  to public
+  using (reporter_id = (select auth.uid()));
+
+create policy "user_reports_insert_own"
+  on public.user_reports for insert
+  to public
+  with check (reporter_id = (select auth.uid()));
+
+-- ============================================================================
 -- Triggers & functions
 -- ============================================================================
 
@@ -672,6 +842,377 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- Mirrors profileCompleteness() in lib/profile.ts: 6 text fields + 4 tag
+-- arrays, all non-empty = 100%. Keep the two in sync if either changes.
+create or replace function public.is_profile_complete(p public.profiles)
+returns boolean
+language sql
+immutable
+set search_path = public
+as $$
+  select
+    coalesce(trim(p.full_name), '') <> ''
+    and coalesce(trim(p.role_title), '') <> ''
+    and coalesce(trim(p.company), '') <> ''
+    and coalesce(trim(p.avatar_url), '') <> ''
+    and coalesce(trim(p.bio), '') <> ''
+    and coalesce(trim(p.location), '') <> ''
+    and coalesce(array_length(p.skills, 1), 0) > 0
+    and coalesce(array_length(p.business_goals, 1), 0) > 0
+    and coalesce(array_length(p.interests, 1), 0) > 0
+    and coalesce(array_length(p.industries, 1), 0) > 0;
+$$;
+
+-- One-time +100 AX the moment a profile first reaches 100% completeness.
+-- The upsert's WHERE guard makes this idempotent regardless of how many
+-- times the row is later saved (or toggles incomplete/complete again).
+-- EXECUTE is revoked from anon/authenticated below — it's meant to run
+-- only as a trigger, not to be called directly via /rest/v1/rpc.
+create or replace function public.sync_profile_completion_bonus()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if public.is_profile_complete(new) then
+    insert into public.profile_gamification (user_id, ax_points, profile_completion_bonus_awarded)
+    values (new.id, 100, true)
+    on conflict (user_id) do update
+      set ax_points = public.profile_gamification.ax_points + 100,
+          profile_completion_bonus_awarded = true,
+          updated_at = now()
+      where not public.profile_gamification.profile_completion_bonus_awarded;
+
+    if found then
+      insert into public.ax_events (user_id, source, amount) values (new.id, 'profile_completion', 100);
+    end if;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_sync_profile_completion_bonus on public.profiles;
+create trigger trg_sync_profile_completion_bonus
+  after insert or update on public.profiles
+  for each row execute function public.sync_profile_completion_bonus();
+
+revoke execute on function public.sync_profile_completion_bonus() from public, anon, authenticated;
+
+-- Recomputes the reviewee's average rating + count from public.reviews.
+-- Reviews have no edit/delete UI today, so AFTER INSERT is enough; the
+-- recompute (vs. incremental average) keeps this correct if that changes.
+create or replace function public.sync_reviewee_reputation()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_avg numeric(3,2);
+  v_count integer;
+begin
+  select round(avg(rating)::numeric, 2), count(*)
+    into v_avg, v_count
+    from public.reviews
+    where reviewee_id = new.reviewee_id;
+
+  insert into public.profile_gamification (user_id, reputation, review_count)
+  values (new.reviewee_id, v_avg, v_count)
+  on conflict (user_id) do update
+    set reputation = v_avg,
+        review_count = v_count,
+        updated_at = now();
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_sync_reviewee_reputation on public.reviews;
+create trigger trg_sync_reviewee_reputation
+  after insert on public.reviews
+  for each row execute function public.sync_reviewee_reputation();
+
+revoke execute on function public.sync_reviewee_reputation() from public, anon, authenticated;
+
+-- Narrow, deliberately-public read of profile_gamification for members other
+-- than the row's owner (whose select policy above blocks them otherwise):
+-- reputation/review_count/derived level+title, plus ax_points itself when
+-- (and only when) the caller IS p_user_id — one round trip covers both the
+-- public stats and the owner's own private balance, instead of a second,
+-- RLS-gated query against profile_gamification directly.
+-- A SECURITY DEFINER view would trip Supabase's linter at ERROR level for
+-- the same RLS-bypass pattern; a function is the safer, more auditable shape
+-- and EXECUTE is deliberately left granted here (unlike the trigger
+-- functions above) since this one is meant to be called directly.
+create or replace function public.get_profile_public_stats(p_user_id uuid)
+returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select
+    pg.reputation,
+    pg.review_count,
+    coalesce(
+      (select l.level from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
+      1
+    ) as level,
+    coalesce(
+      (select l.title from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
+      'Starter'
+    ) as level_title,
+    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points
+  from public.profile_gamification pg
+  where pg.user_id = p_user_id;
+$$;
+
+grant execute on function public.get_profile_public_stats(uuid) to authenticated;
+
+-- One-shot "how does the viewer relate to this profile" lookup, replacing 4
+-- separate client queries (isFollowing, isUserBlocked, getMyReviewOf,
+-- getConnectionState). SECURITY INVOKER (the default) is correct here —
+-- every underlying table's own RLS already scopes rows to p_viewer_id when
+-- it equals auth.uid() (the only legitimate caller), so this needs no
+-- elevated privileges at all.
+create or replace function public.get_viewer_relation(p_viewer_id uuid, p_target_id uuid)
+returns table (
+  following boolean,
+  blocked boolean,
+  reviewed boolean,
+  connection_status text,
+  connection_id uuid
+)
+language sql
+stable
+set search_path = public
+as $$
+  select
+    exists (
+      select 1 from public.follows f
+      where f.follower_id = p_viewer_id and f.followee_id = p_target_id
+    ) as following,
+    exists (
+      select 1 from public.user_blocks b
+      where b.blocker_id = p_viewer_id and b.blocked_id = p_target_id
+    ) as blocked,
+    exists (
+      select 1 from public.reviews r
+      where r.reviewer_id = p_viewer_id and r.reviewee_id = p_target_id
+    ) as reviewed,
+    coalesce(
+      (select 'connected' from public.connections c
+        where c.status = 'accepted'
+          and ((c.requester_id = p_viewer_id and c.addressee_id = p_target_id)
+            or (c.requester_id = p_target_id and c.addressee_id = p_viewer_id))
+        limit 1),
+      (select 'pending_sent' from public.connections c
+        where c.status = 'pending' and c.requester_id = p_viewer_id and c.addressee_id = p_target_id
+        limit 1),
+      (select 'pending_received' from public.connections c
+        where c.status = 'pending' and c.requester_id = p_target_id and c.addressee_id = p_viewer_id
+        limit 1),
+      'none'
+    ) as connection_status,
+    (
+      select c.id from public.connections c
+      where c.status = 'pending' and c.requester_id = p_target_id and c.addressee_id = p_viewer_id
+      limit 1
+    ) as connection_id;
+$$;
+
+grant execute on function public.get_viewer_relation(uuid, uuid) to authenticated;
+
+-- ============================================================================
+-- AX earning sources
+-- Every award goes through award_ax(), which logs to ax_events and enforces
+-- a rolling-24h cap per (user, source) so none of these can be farmed.
+-- ============================================================================
+create or replace function public.award_ax(
+  p_user_id uuid,
+  p_source text,
+  p_amount integer,
+  p_daily_cap integer
+)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_today_count integer;
+begin
+  select count(*) into v_today_count
+  from public.ax_events
+  where user_id = p_user_id
+    and source = p_source
+    and created_at >= now() - interval '1 day';
+
+  if v_today_count >= p_daily_cap then
+    return;
+  end if;
+
+  insert into public.ax_events (user_id, source, amount) values (p_user_id, p_source, p_amount);
+
+  insert into public.profile_gamification (user_id, ax_points)
+  values (p_user_id, p_amount)
+  on conflict (user_id) do update
+    set ax_points = public.profile_gamification.ax_points + p_amount,
+        updated_at = now();
+end;
+$$;
+
+revoke execute on function public.award_ax(uuid, text, integer, integer) from public, anon, authenticated;
+
+-- Post published — +5 AX, max 3/day (15 AX/day).
+create or replace function public.award_post_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.user_id, 'post', 5, 3);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_post_ax on public.activity_items;
+create trigger trg_award_post_ax
+  after insert on public.activity_items
+  for each row execute function public.award_post_ax();
+
+revoke execute on function public.award_post_ax() from public, anon, authenticated;
+
+-- Like received on your post — +1 AX, max 20/day. Self-likes don't count.
+create or replace function public.award_like_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_post_owner uuid;
+begin
+  select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
+  if v_post_owner is not null and v_post_owner <> new.user_id then
+    perform public.award_ax(v_post_owner, 'like_received', 1, 20);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_like_ax on public.activity_likes;
+create trigger trg_award_like_ax
+  after insert on public.activity_likes
+  for each row execute function public.award_like_ax();
+
+revoke execute on function public.award_like_ax() from public, anon, authenticated;
+
+-- Comment received on your post — +2 AX, max 10/day. Self-comments don't count.
+create or replace function public.award_comment_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_post_owner uuid;
+begin
+  select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
+  if v_post_owner is not null and v_post_owner <> new.user_id then
+    perform public.award_ax(v_post_owner, 'comment_received', 2, 10);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_comment_ax on public.activity_comments;
+create trigger trg_award_comment_ax
+  after insert on public.activity_comments
+  for each row execute function public.award_comment_ax();
+
+revoke execute on function public.award_comment_ax() from public, anon, authenticated;
+
+-- Connection request accepted — +10 AX to both sides, max 5/day each.
+-- Nothing in the app sets connections.status to 'accepted' yet (only the
+-- "Познайомитися" request itself is wired up) — ready for whenever an
+-- accept flow ships, harmless (never fires) until then.
+create or replace function public.award_connection_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.status = 'accepted' and old.status is distinct from 'accepted' then
+    perform public.award_ax(new.requester_id, 'connection_accepted', 10, 5);
+    perform public.award_ax(new.addressee_id, 'connection_accepted', 10, 5);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_connection_ax on public.connections;
+create trigger trg_award_connection_ax
+  after update on public.connections
+  for each row execute function public.award_connection_ax();
+
+revoke execute on function public.award_connection_ax() from public, anon, authenticated;
+
+-- New follower — +1 AX, max 15/day.
+create or replace function public.award_follow_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.followee_id, 'follower_received', 1, 15);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_follow_ax on public.follows;
+create trigger trg_award_follow_ax
+  after insert on public.follows
+  for each row execute function public.award_follow_ax();
+
+revoke execute on function public.award_follow_ax() from public, anon, authenticated;
+
+-- Project added to portfolio — +15 AX, max 2/day.
+create or replace function public.award_project_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.user_id, 'project_added', 15, 2);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_project_ax on public.projects;
+create trigger trg_award_project_ax
+  after insert on public.projects
+  for each row execute function public.award_project_ax();
+
+revoke execute on function public.award_project_ax() from public, anon, authenticated;
+
+-- Review received — +20 AX, max 5/day (on top of the existing unique
+-- (reviewer_id, reviewee_id) constraint, which already stops any single
+-- pair from farming this repeatedly).
+create or replace function public.award_review_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.reviewee_id, 'review_received', 20, 5);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_review_ax on public.reviews;
+create trigger trg_award_review_ax
+  after insert on public.reviews
+  for each row execute function public.award_review_ax();
+
+revoke execute on function public.award_review_ax() from public, anon, authenticated;
 
 -- Project-level event trigger (public.rls_auto_enable) automatically runs
 -- `alter table ... enable row level security` on every newly created table

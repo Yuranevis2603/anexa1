@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { initials, type Profile } from "@/lib/profile";
+import type { Profile } from "@/lib/profile";
 import type { MatchCandidate } from "@/lib/match";
+import { getBlockedUserIds } from "@/lib/moderation";
+import Avatar from "@/components/ui/Avatar";
 import {
   FEED_FILTERS,
   FEED_PAGE_SIZE,
@@ -69,6 +71,7 @@ export default function FeedView({
   const forYouPoolRef = useRef<FeedItem[]>([]);
   const requestIdRef = useRef(0);
   const loadingMoreRef = useRef(false);
+  const blockedIdsRef = useRef<Set<string>>(new Set());
 
   const loadFirstPage = useCallback(
     async (targetFilter: FeedFilter) => {
@@ -78,21 +81,24 @@ export default function FeedView({
 
       try {
         const supabase = createClient();
+        blockedIdsRef.current = await getBlockedUserIds(supabase, userId);
         let pageItems: FeedItem[];
         let more: boolean;
 
         if (targetFilter === "for_you") {
-          const pool = personalizeFeed(await getForYouPool(supabase), profile);
+          const pool = personalizeFeed(await getForYouPool(supabase), profile).filter(
+            (i) => !blockedIdsRef.current.has(i.user_id)
+          );
           forYouPoolRef.current = pool;
           pageItems = pool.slice(0, FEED_PAGE_SIZE);
           more = pool.length > FEED_PAGE_SIZE;
         } else if (targetFilter === "saved") {
           const result = await getSavedFeedPage(supabase, { userId, page: 0 });
-          pageItems = result.items;
+          pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         } else {
           const result = await getFeedPage(supabase, { filter: targetFilter, page: 0 });
-          pageItems = result.items;
+          pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         }
 
@@ -144,11 +150,11 @@ export default function FeedView({
         more = start + FEED_PAGE_SIZE < pool.length;
       } else if (filter === "saved") {
         const result = await getSavedFeedPage(supabase, { userId, page: nextPage });
-        nextItems = result.items;
+        nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       } else {
         const result = await getFeedPage(supabase, { filter, page: nextPage });
-        nextItems = result.items;
+        nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       }
 
@@ -223,14 +229,12 @@ export default function FeedView({
         onClick={() => setModalOpen(true)}
         className="glass mt-4 flex w-full items-center gap-3 rounded-2xl border border-border-subtle p-3 text-left transition-colors hover:bg-white/[0.04] sm:p-3.5"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10">
-          {profile?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
-          ) : (
-            initials(profile?.full_name ?? "?")
-          )}
-        </div>
+        <Avatar
+          src={profile?.avatar_url}
+          name={profile?.full_name ?? "?"}
+          size={40}
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10"
+        />
         <span className="flex-1 truncate text-[13px] text-ink-tertiary sm:text-[13.5px]">
           Поділіться ідеєю, проєктом чи можливістю...
         </span>

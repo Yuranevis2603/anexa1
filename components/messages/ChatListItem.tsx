@@ -1,7 +1,8 @@
 "use client";
 
-import { initials } from "@/lib/profile";
 import { attachmentPreviewLabel, formatChatListTime, type ConversationSummary } from "@/lib/messages";
+import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 export default function ChatListItem({
   conversation,
@@ -34,14 +35,23 @@ export default function ChatListItem({
       }`}
     >
       <div className="relative shrink-0">
-        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
-          {other?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={other.avatar_url} alt={name} className="h-full w-full object-cover" />
-          ) : (
-            initials(name)
-          )}
-        </div>
+        {other ? (
+          <ProfilePreviewCard userId={other.id}>
+            <Avatar
+              src={other.avatar_url}
+              name={name}
+              size={44}
+              className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple"
+            />
+          </ProfilePreviewCard>
+        ) : (
+          <Avatar
+            src={null}
+            name={name}
+            size={44}
+            className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple"
+          />
+        )}
         {online ? (
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-base bg-success" />
         ) : null}
@@ -49,7 +59,13 @@ export default function ChatListItem({
 
       <div className="min-w-0 flex-1">
         <div className="flex items-center justify-between gap-2">
-          <p className="truncate text-[13.5px] font-medium text-ink-primary">{name}</p>
+          {other ? (
+            <ProfilePreviewCard userId={other.id}>
+              <span className="truncate text-[13.5px] font-medium text-ink-primary">{name}</span>
+            </ProfilePreviewCard>
+          ) : (
+            <p className="truncate text-[13.5px] font-medium text-ink-primary">{name}</p>
+          )}
           {conversation.lastMessage ? (
             <span className="shrink-0 text-[11px] text-ink-tertiary">
               {formatChatListTime(conversation.lastMessage.created_at)}

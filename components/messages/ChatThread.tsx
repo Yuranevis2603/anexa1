@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
-import { initials } from "@/lib/profile";
 import {
   attachmentPreviewLabel,
   formatDaySeparator,
@@ -21,6 +21,8 @@ import {
   type MessageAttachment,
 } from "@/lib/messages";
 import { useTypingPresence } from "@/lib/presence";
+import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 const MAX_ATTACHMENT_MB = 15;
 
@@ -226,20 +228,35 @@ export default function ChatThread({
           </button>
         ) : null}
         <div className="relative shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-            {other?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={other.avatar_url} alt={name} className="h-full w-full object-cover" />
-            ) : (
-              initials(name)
-            )}
-          </div>
+          {other ? (
+            <ProfilePreviewCard userId={other.id}>
+              <Avatar
+                src={other.avatar_url}
+                name={name}
+                size={36}
+                className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+              />
+            </ProfilePreviewCard>
+          ) : (
+            <Avatar
+              src={null}
+              name={name}
+              size={36}
+              className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+            />
+          )}
           {online ? (
             <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-base bg-success" />
           ) : null}
         </div>
         <div className="min-w-0">
-          <p className="truncate text-[13.5px] font-medium text-ink-primary">{name}</p>
+          {other ? (
+            <ProfilePreviewCard userId={other.id}>
+              <span className="truncate text-[13.5px] font-medium text-ink-primary">{name}</span>
+            </ProfilePreviewCard>
+          ) : (
+            <p className="truncate text-[13.5px] font-medium text-ink-primary">{name}</p>
+          )}
           <p className={`truncate text-[12px] ${statusColor}`}>{statusText}</p>
         </div>
       </div>
@@ -280,13 +297,16 @@ export default function ChatThread({
                           rel="noopener noreferrer"
                           className="mb-1.5 block overflow-hidden rounded-2xl border border-border-subtle"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={signedUrls.get(m.attachment_path)}
-                            alt={m.attachment_name ?? ""}
-                            loading="lazy"
-                            className="max-h-72 w-full object-cover"
-                          />
+                          {signedUrls.get(m.attachment_path) ? (
+                            <Image
+                              src={signedUrls.get(m.attachment_path)!}
+                              alt={m.attachment_name ?? ""}
+                              width={800}
+                              height={600}
+                              sizes="(max-width: 640px) 90vw, 480px"
+                              className="max-h-72 w-full object-cover"
+                            />
+                          ) : null}
                         </a>
                       ) : (
                         <a
