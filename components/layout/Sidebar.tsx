@@ -87,14 +87,14 @@ export default function Sidebar({
         (open ? "translate-x-0" : "-translate-x-full")
       }
     >
-      <div className="mb-6 flex items-center justify-between px-2">
-        <Image src="/anexa-logo-wordmark.png" alt="ANEXA" width={92} height={28} className="h-7 w-auto" priority />
+      <div className="relative mb-6 flex items-center justify-center px-2">
+        <Image src="/anexa-logo-wordmark.png" alt="ANEXA" width={118} height={36} className="h-9 w-auto" priority />
 
         <button
           type="button"
           onClick={onClose}
           aria-label="Закрити меню"
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
+          className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-ink-tertiary hover:bg-white/[0.05] hover:text-ink-primary md:hidden"
         >
           <X size={18} />
         </button>
