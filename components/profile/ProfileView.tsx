@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -159,18 +159,9 @@ export default function ProfileView({
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
-
-  useEffect(() => {
-    function onClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    }
-    document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -416,60 +407,78 @@ export default function ProfileView({
                 </>
               ) : null}
 
-              <div className="relative" ref={menuRef}>
-                <button
-                  onClick={() => setMenuOpen((v) => !v)}
-                  aria-label="Ще дії"
-                  className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-subtle bg-white/[0.04] text-ink-secondary transition-colors hover:bg-white/[0.07]"
-                >
-                  <MoreHorizontal size={16} />
-                </button>
-                {menuOpen ? (
-                  <div className="absolute right-0 top-11 z-10 w-52 overflow-hidden rounded-xl border border-border-strong bg-base-card shadow-2xl">
-                    <button
-                      onClick={handleShare}
-                      className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-ink-primary transition-colors hover:bg-white/[0.05]"
-                    >
-                      <Share2 size={14} /> {viewerIsOwner ? "Копіювати посилання" : "Поділитися профілем"}
-                    </button>
-                    {canInteract ? (
-                      <>
-                        {!hasReviewed ? (
-                          <button
-                            onClick={() => {
-                              setMenuOpen(false);
-                              setReviewModalOpen(true);
-                            }}
-                            className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-ink-primary transition-colors hover:bg-white/[0.05]"
-                          >
-                            <Star size={14} /> Оцінити співпрацю
-                          </button>
-                        ) : null}
-                        <button
-                          onClick={() => {
-                            setMenuOpen(false);
-                            setReportModalOpen(true);
-                          }}
-                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-ink-primary transition-colors hover:bg-white/[0.05]"
-                        >
-                          <Flag size={14} /> Поскаржитись
-                        </button>
-                        <button
-                          onClick={handleToggleBlock}
-                          disabled={blockLoading}
-                          className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-[13px] text-danger transition-colors hover:bg-white/[0.05] disabled:opacity-60"
-                        >
-                          <Ban size={14} /> {blocked ? "Розблокувати" : "Заблокувати"}
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-              </div>
+              <button
+                onClick={() => setMenuOpen(true)}
+                aria-label="Ще дії"
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-border-subtle bg-white/[0.04] text-ink-secondary transition-colors hover:bg-white/[0.07]"
+              >
+                <MoreHorizontal size={16} />
+              </button>
             </div>
           </div>
         </div>
       </section>
+
+      {/* An anchored dropdown here fights flex-wrap on narrow screens (the
+          "..." button isn't always pinned to a screen edge), so this is a
+          fixed action sheet instead — same modal pattern as EditProfileModal
+          etc., just anchored to the viewport, not the trigger button. */}
+      {menuOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
+          onClick={() => setMenuOpen(false)}
+          role="presentation"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="glass w-full max-w-sm overflow-hidden rounded-t-2xl border border-border-subtle bg-base-card sm:rounded-2xl"
+          >
+            <button
+              onClick={handleShare}
+              className="flex w-full items-center gap-2.5 px-4 py-3.5 text-left text-[13.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+            >
+              <Share2 size={15} /> {viewerIsOwner ? "Копіювати посилання" : "Поділитися профілем"}
+            </button>
+            {canInteract ? (
+              <>
+                {!hasReviewed ? (
+                  <button
+                    onClick={() => {
+                      setMenuOpen(false);
+                      setReviewModalOpen(true);
+                    }}
+                    className="flex w-full items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 text-left text-[13.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+                  >
+                    <Star size={15} /> Оцінити співпрацю
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => {
+                    setMenuOpen(false);
+                    setReportModalOpen(true);
+                  }}
+                  className="flex w-full items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 text-left text-[13.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+                >
+                  <Flag size={15} /> Поскаржитись
+                </button>
+                <button
+                  onClick={handleToggleBlock}
+                  disabled={blockLoading}
+                  className="flex w-full items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 text-left text-[13.5px] text-danger transition-colors hover:bg-white/[0.05] disabled:opacity-60"
+                >
+                  <Ban size={15} /> {blocked ? "Розблокувати" : "Заблокувати"}
+                </button>
+              </>
+            ) : null}
+            <button
+              onClick={() => setMenuOpen(false)}
+              className="flex w-full items-center justify-center border-t border-border-subtle px-4 py-3.5 text-[13.5px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.05]"
+            >
+              Скасувати
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* ---------------- METRICS ---------------- */}
       <div className={`mt-4 grid grid-cols-1 gap-3 ${viewerIsOwner ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
