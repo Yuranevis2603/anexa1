@@ -19,6 +19,7 @@ function DashboardShellInner({
   userRole,
   avatarUrl,
   initialUnreadMessages,
+  pendingConnections,
 }: {
   children: React.ReactNode;
   userId?: string;
@@ -26,6 +27,7 @@ function DashboardShellInner({
   userRole?: string;
   avatarUrl?: string;
   initialUnreadMessages: number;
+  pendingConnections: number;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -74,7 +76,12 @@ function DashboardShellInner({
         />
       ) : null}
 
-      <Sidebar open={navOpen} onClose={() => setNavOpen(false)} unreadMessages={unreadMessages} />
+      <Sidebar
+        open={navOpen}
+        onClose={() => setNavOpen(false)}
+        unreadMessages={unreadMessages}
+        pendingConnections={pendingConnections}
+      />
 
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header
@@ -96,6 +103,7 @@ export default function DashboardShell({
   userRole,
   avatarUrl,
   initialUnreadMessages = 0,
+  pendingConnections = 0,
 }: {
   children: React.ReactNode;
   userId?: string;
@@ -103,6 +111,7 @@ export default function DashboardShell({
   userRole?: string;
   avatarUrl?: string;
   initialUnreadMessages?: number;
+  pendingConnections?: number;
 }) {
   return (
     <OnlinePresenceProvider userId={userId}>
@@ -112,6 +121,7 @@ export default function DashboardShell({
         userRole={userRole}
         avatarUrl={avatarUrl}
         initialUnreadMessages={initialUnreadMessages}
+        pendingConnections={pendingConnections}
       >
         {children}
       </DashboardShellInner>

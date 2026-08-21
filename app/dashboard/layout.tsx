@@ -3,6 +3,7 @@ import ToastProvider from "@/components/ui/ToastProvider";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/profile";
 import { getTotalUnreadCount } from "@/lib/messages";
+import { getIncomingConnectionCount } from "@/lib/connections";
 
 export default async function DashboardLayout({
   children,
@@ -16,6 +17,7 @@ export default async function DashboardLayout({
 
   const profile = user ? await getProfile(supabase, user.id) : null;
   const unreadMessages = user ? await getTotalUnreadCount(supabase, user.id) : 0;
+  const pendingConnections = user ? await getIncomingConnectionCount(supabase, user.id) : 0;
 
   return (
     <ToastProvider>
@@ -28,6 +30,7 @@ export default async function DashboardLayout({
         }
         avatarUrl={profile?.avatar_url ?? undefined}
         initialUnreadMessages={unreadMessages}
+        pendingConnections={pendingConnections}
       >
         {children}
       </DashboardShell>

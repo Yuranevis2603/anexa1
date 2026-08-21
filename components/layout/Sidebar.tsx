@@ -2,7 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { Home, Users, MessageCircle, User, Settings, Bookmark, X } from "lucide-react";
+import { Home, Users, MessageCircle, User, Settings, Bookmark, UserPlus, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -11,11 +11,17 @@ type NavItem = {
   badge?: number;
 };
 
-function buildPrimaryNav(unreadMessages: number): NavItem[] {
+function buildPrimaryNav(unreadMessages: number, pendingConnections: number): NavItem[] {
   return [
     { label: "Головна", href: "/dashboard", icon: Home },
     { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
     { label: "Люди", href: "/dashboard/people", icon: Users },
+    {
+      label: "Запити на знайомство",
+      href: "/dashboard/connections",
+      icon: UserPlus,
+      badge: pendingConnections > 0 ? pendingConnections : undefined,
+    },
     {
       label: "Повідомлення",
       href: "/dashboard/messages",
@@ -63,13 +69,15 @@ export default function Sidebar({
   open = false,
   onClose,
   unreadMessages = 0,
+  pendingConnections = 0,
 }: {
   open?: boolean;
   onClose?: () => void;
   unreadMessages?: number;
+  pendingConnections?: number;
 }) {
   const activePath = usePathname();
-  const primaryNav = buildPrimaryNav(unreadMessages);
+  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections);
 
   return (
     <aside
