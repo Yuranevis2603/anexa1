@@ -2,13 +2,13 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { Check, Loader2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { requestConnection } from "@/lib/connections";
 import { initials } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import type { MatchCandidate } from "@/lib/match";
+import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 
 export default function PotentialMatch({ userId, match }: { userId: string; match: MatchCandidate }) {
   const { showToast } = useToast();
@@ -30,7 +30,6 @@ export default function PotentialMatch({ userId, match }: { userId: string; matc
     }
   }
 
-  const profileHref = `/dashboard/people/${match.profile.id}`;
   const tagsPreview = match.overlappingTags.slice(0, 3);
 
   return (
@@ -42,24 +41,25 @@ export default function PotentialMatch({ userId, match }: { userId: string; matc
       <p className="mt-1 text-[12px] text-ink-tertiary">Можливо, вам варто познайомитися</p>
 
       <div className="mt-3 flex items-start gap-3">
-        <Link href={profileHref} className="shrink-0">
-          <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-            {match.profile.avatar_url ? (
-              <Image src={match.profile.avatar_url} alt={match.profile.full_name} fill sizes="44px" className="object-cover" />
-            ) : (
-              initials(match.profile.full_name)
-            )}
+        <ProfilePreviewCard userId={match.profile.id}>
+          <div className="shrink-0">
+            <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
+              {match.profile.avatar_url ? (
+                <Image src={match.profile.avatar_url} alt={match.profile.full_name} fill sizes="44px" className="object-cover" />
+              ) : (
+                initials(match.profile.full_name)
+              )}
+            </div>
           </div>
-        </Link>
+        </ProfilePreviewCard>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <Link
-              href={profileHref}
-              className="truncate text-[13.5px] font-medium text-ink-primary hover:underline"
-            >
-              {match.profile.full_name}
-            </Link>
+            <ProfilePreviewCard userId={match.profile.id}>
+              <span className="truncate text-[13.5px] font-medium text-ink-primary hover:underline">
+                {match.profile.full_name}
+              </span>
+            </ProfilePreviewCard>
             <span className="shrink-0 rounded-full bg-grad-purple-blue px-2 py-0.5 text-[11px] font-semibold text-white shadow-glow-purple">
               {match.score}% match
             </span>

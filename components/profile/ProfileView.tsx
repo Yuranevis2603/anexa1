@@ -45,6 +45,7 @@ import EditProfileModal from "./EditProfileModal";
 import CreateProjectModal from "./CreateProjectModal";
 import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
+import GamificationInfoModal from "./GamificationInfoModal";
 import PostCard from "@/components/feed/PostCard";
 
 function Ring({
@@ -157,6 +158,7 @@ export default function ProfileView({
   const [hasReviewed, setHasReviewed] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [gamificationInfoOpen, setGamificationInfoOpen] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"activity" | "info">("activity");
@@ -477,7 +479,11 @@ export default function ProfileView({
 
       {/* ---------------- METRICS ---------------- */}
       <div className={`mt-4 grid grid-cols-1 gap-3 ${viewerIsOwner ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-        <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
+        <button
+          type="button"
+          onClick={() => setGamificationInfoOpen(true)}
+          className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4 text-left transition-colors hover:bg-white/[0.03]"
+        >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold/10">
             <Star size={17} className="text-gold" />
           </div>
@@ -488,9 +494,13 @@ export default function ProfileView({
               {stats.reputation !== null ? <span className="ml-1 text-xs font-normal text-ink-tertiary">/ 5 · {stats.review_count}</span> : null}
             </p>
           </div>
-        </div>
+        </button>
         {viewerIsOwner ? (
-          <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
+          <button
+            type="button"
+            onClick={() => setGamificationInfoOpen(true)}
+            className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4 text-left transition-colors hover:bg-white/[0.03]"
+          >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue/10">
               <Zap size={17} className="text-blue" />
             </div>
@@ -498,9 +508,13 @@ export default function ProfileView({
               <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">AX</p>
               <p className="font-display text-lg font-semibold leading-tight text-ink-primary">{stats.ax_points.toLocaleString("uk-UA")}</p>
             </div>
-          </div>
+          </button>
         ) : null}
-        <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
+        <button
+          type="button"
+          onClick={() => setGamificationInfoOpen(true)}
+          className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4 text-left transition-colors hover:bg-white/[0.03]"
+        >
           <Ring size={40} thickness={2.5} percent={levelProgress.progressPercent}>
             <div className="flex h-full w-full items-center justify-center rounded-full bg-base-card">
               <Trophy size={15} className="text-purple-soft" />
@@ -513,7 +527,7 @@ export default function ProfileView({
               <span className="ml-1 text-xs font-normal text-ink-tertiary">{levelProgress.title}</span>
             </p>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* ---------------- TABS ---------------- */}
@@ -768,6 +782,10 @@ export default function ProfileView({
           reportedName={current.full_name}
           onClose={() => setReportModalOpen(false)}
         />
+      ) : null}
+
+      {gamificationInfoOpen ? (
+        <GamificationInfoModal levels={levels} onClose={() => setGamificationInfoOpen(false)} />
       ) : null}
     </div>
   );
