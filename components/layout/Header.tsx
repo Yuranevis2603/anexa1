@@ -33,7 +33,7 @@ export default function Header({
   }, []);
 
   return (
-    <header className="glass flex h-16 items-center justify-between gap-3 border-b border-border-subtle px-4 sm:px-6">
+    <header className="glass relative z-30 flex h-16 items-center justify-between gap-3 border-b border-border-subtle px-4 sm:px-6">
       <div className="flex flex-1 items-center gap-3">
         <button
           type="button"
