@@ -159,6 +159,7 @@ export default function ProfileView({
   const [reportModalOpen, setReportModalOpen] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"activity" | "info">("activity");
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
@@ -521,74 +522,34 @@ export default function ProfileView({
         </div>
       </div>
 
-      {/* ---------------- MAIN GRID ---------------- */}
-      <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-        <div className="flex flex-col gap-4 md:col-span-2">
-          <SectionCard title="Про мене">
-            {current.bio ? (
-              <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-secondary">{current.bio}</p>
-            ) : viewerIsOwner ? (
-              <EmptyHint text="Розкажіть іншим учасникам, чим ви займаєтесь." cta="Додати опис" onClick={() => setEditModalOpen(true)} />
-            ) : (
-              <p className="text-[13.5px] text-ink-tertiary">Опис ще не додано.</p>
-            )}
-            {viewerIsOwner && !current.is_approved ? (
-              <div className="mt-5 rounded-lg border border-gold/25 bg-gold/10 px-4 py-3">
-                <p className="text-[12.5px] text-gold-soft">Ваш профіль ще очікує підтвердження модератором закритої бета-версії.</p>
-              </div>
-            ) : null}
-          </SectionCard>
+      {/* ---------------- TABS ---------------- */}
+      <div className="mt-4 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setActiveTab("activity")}
+          className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+            activeTab === "activity"
+              ? "border-transparent bg-grad-purple-blue text-white shadow-glow-purple"
+              : "border-border-subtle text-ink-secondary hover:bg-white/[0.05]"
+          }`}
+        >
+          Активність
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("info")}
+          className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+            activeTab === "info"
+              ? "border-transparent bg-grad-purple-blue text-white shadow-glow-purple"
+              : "border-border-subtle text-ink-secondary hover:bg-white/[0.05]"
+          }`}
+        >
+          Інформація
+        </button>
+      </div>
 
-          <SectionCard
-            title="Проєкти"
-            icon={FolderKanban}
-            action={
-              viewerIsOwner ? (
-                <button
-                  onClick={() => setCreateProjectOpen(true)}
-                  className="flex items-center gap-1 text-[12px] font-medium text-purple-soft transition-colors hover:text-purple"
-                >
-                  <Plus size={13} /> Додати
-                </button>
-              ) : null
-            }
-          >
-            {loadingSections ? (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {[0, 1].map((i) => (
-                  <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />
-                ))}
-              </div>
-            ) : projects.length === 0 ? (
-              viewerIsOwner ? (
-                <EmptyHint text="Ще немає проєктів — додайте перший." cta="Додати проєкт" onClick={() => setCreateProjectOpen(true)} />
-              ) : (
-                <p className="text-[13.5px] text-ink-tertiary">Проєктів поки немає.</p>
-              )
-            ) : (
-              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {projects.map((p) => (
-                  <div key={p.id} className="glass rounded-xl border border-border-subtle p-4">
-                    <h4 className="text-[13.5px] font-semibold text-ink-primary">{p.title}</h4>
-                    {p.description ? (
-                      <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-ink-secondary">{p.description}</p>
-                    ) : null}
-                    <div className="mt-3 flex items-center gap-2">
-                      <span
-                        className={`rounded-md px-2 py-1 text-[11px] font-medium ${
-                          p.status === "active" ? "bg-blue/10 text-blue" : "bg-success/10 text-success"
-                        }`}
-                      >
-                        {p.status === "active" ? "Будується" : "Завершено"}
-                      </span>
-                      {p.team_size ? <span className="text-[11px] text-ink-tertiary">Команда: {p.team_size}</span> : null}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </SectionCard>
-
+      {activeTab === "activity" ? (
+        <div className="mt-4">
           <SectionCard title="Остання активність" icon={Sparkles}>
             {loadingSections ? (
               <div className="flex flex-col gap-3">
@@ -616,84 +577,153 @@ export default function ProfileView({
             )}
           </SectionCard>
         </div>
+      ) : (
+        <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+          <div className="flex flex-col gap-4 md:col-span-2">
+            <SectionCard title="Про мене">
+              {current.bio ? (
+                <p className="whitespace-pre-wrap text-[13.5px] leading-relaxed text-ink-secondary">{current.bio}</p>
+              ) : viewerIsOwner ? (
+                <EmptyHint text="Розкажіть іншим учасникам, чим ви займаєтесь." cta="Додати опис" onClick={() => setEditModalOpen(true)} />
+              ) : (
+                <p className="text-[13.5px] text-ink-tertiary">Опис ще не додано.</p>
+              )}
+              {viewerIsOwner && !current.is_approved ? (
+                <div className="mt-5 rounded-lg border border-gold/25 bg-gold/10 px-4 py-3">
+                  <p className="text-[12.5px] text-gold-soft">Ваш профіль ще очікує підтвердження модератором закритої бета-версії.</p>
+                </div>
+              ) : null}
+            </SectionCard>
 
-        <div className="flex flex-col gap-4">
-          <SectionCard title="Навички">
-            {current.skills.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {current.skills.map((s) => (
-                  <Chip key={s}>{s}</Chip>
-                ))}
+            <SectionCard
+              title="Проєкти"
+              icon={FolderKanban}
+              action={
+                viewerIsOwner ? (
+                  <button
+                    onClick={() => setCreateProjectOpen(true)}
+                    className="flex items-center gap-1 text-[12px] font-medium text-purple-soft transition-colors hover:text-purple"
+                  >
+                    <Plus size={13} /> Додати
+                  </button>
+                ) : null
+              }
+            >
+              {loadingSections ? (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {[0, 1].map((i) => (
+                    <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />
+                  ))}
+                </div>
+              ) : projects.length === 0 ? (
+                viewerIsOwner ? (
+                  <EmptyHint text="Ще немає проєктів — додайте перший." cta="Додати проєкт" onClick={() => setCreateProjectOpen(true)} />
+                ) : (
+                  <p className="text-[13.5px] text-ink-tertiary">Проєктів поки немає.</p>
+                )
+              ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {projects.map((p) => (
+                    <div key={p.id} className="glass rounded-xl border border-border-subtle p-4">
+                      <h4 className="text-[13.5px] font-semibold text-ink-primary">{p.title}</h4>
+                      {p.description ? (
+                        <p className="mt-1 line-clamp-2 text-[12.5px] leading-relaxed text-ink-secondary">{p.description}</p>
+                      ) : null}
+                      <div className="mt-3 flex items-center gap-2">
+                        <span
+                          className={`rounded-md px-2 py-1 text-[11px] font-medium ${
+                            p.status === "active" ? "bg-blue/10 text-blue" : "bg-success/10 text-success"
+                          }`}
+                        >
+                          {p.status === "active" ? "Будується" : "Завершено"}
+                        </span>
+                        {p.team_size ? <span className="text-[11px] text-ink-tertiary">Команда: {p.team_size}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <SectionCard title="Навички">
+              {current.skills.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {current.skills.map((s) => (
+                    <Chip key={s}>{s}</Chip>
+                  ))}
+                </div>
+              ) : viewerIsOwner ? (
+                <EmptyHint text="Додайте навички, щоб вас легше було знайти." cta="Додати" onClick={() => setEditModalOpen(true)} />
+              ) : (
+                <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Поточні цілі">
+              {current.business_goals.length > 0 ? (
+                <ul className="flex flex-col gap-2.5">
+                  {current.business_goals.map((g) => (
+                    <li key={g} className="text-[13px] text-ink-primary">
+                      {g}
+                    </li>
+                  ))}
+                </ul>
+              ) : viewerIsOwner ? (
+                <EmptyHint text="Ще не додано жодної цілі." cta="Додати" onClick={() => setEditModalOpen(true)} />
+              ) : (
+                <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Кого шукаю">
+              {current.interests.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {current.interests.map((v) => (
+                    <Chip key={v}>{v}</Chip>
+                  ))}
+                </div>
+              ) : viewerIsOwner ? (
+                <EmptyHint text="Ще не вказано." cta="Додати" onClick={() => setEditModalOpen(true)} />
+              ) : (
+                <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Чим можу допомогти">
+              {current.industries.length > 0 ? (
+                <ul className="flex flex-col gap-2.5">
+                  {current.industries.map((v) => (
+                    <li key={v} className="text-[13px] text-ink-primary">
+                      {v}
+                    </li>
+                  ))}
+                </ul>
+              ) : viewerIsOwner ? (
+                <EmptyHint text="Ще не вказано." cta="Додати" onClick={() => setEditModalOpen(true)} />
+              ) : (
+                <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
+              )}
+            </SectionCard>
+
+            {viewerIsOwner ? (
+              <div className="glass rounded-2xl border border-border-subtle p-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Заповненість профілю</span>
+                  <span className="font-display text-[13px] font-semibold text-ink-primary">{completeness}%</span>
+                </div>
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                  <div className="h-full rounded-full bg-grad-purple-blue transition-all" style={{ width: `${completeness}%` }} />
+                </div>
+                <p className="mt-3 text-[11.5px] leading-relaxed text-ink-tertiary">
+                  Заповнений профіль отримує більше уваги в Match-блоці та Feed.
+                </p>
               </div>
-            ) : viewerIsOwner ? (
-              <EmptyHint text="Додайте навички, щоб вас легше було знайти." cta="Додати" onClick={() => setEditModalOpen(true)} />
-            ) : (
-              <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Поточні цілі">
-            {current.business_goals.length > 0 ? (
-              <ul className="flex flex-col gap-2.5">
-                {current.business_goals.map((g) => (
-                  <li key={g} className="text-[13px] text-ink-primary">
-                    {g}
-                  </li>
-                ))}
-              </ul>
-            ) : viewerIsOwner ? (
-              <EmptyHint text="Ще не додано жодної цілі." cta="Додати" onClick={() => setEditModalOpen(true)} />
-            ) : (
-              <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Кого шукаю">
-            {current.interests.length > 0 ? (
-              <div className="flex flex-wrap gap-2">
-                {current.interests.map((v) => (
-                  <Chip key={v}>{v}</Chip>
-                ))}
-              </div>
-            ) : viewerIsOwner ? (
-              <EmptyHint text="Ще не вказано." cta="Додати" onClick={() => setEditModalOpen(true)} />
-            ) : (
-              <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
-            )}
-          </SectionCard>
-
-          <SectionCard title="Чим можу допомогти">
-            {current.industries.length > 0 ? (
-              <ul className="flex flex-col gap-2.5">
-                {current.industries.map((v) => (
-                  <li key={v} className="text-[13px] text-ink-primary">
-                    {v}
-                  </li>
-                ))}
-              </ul>
-            ) : viewerIsOwner ? (
-              <EmptyHint text="Ще не вказано." cta="Додати" onClick={() => setEditModalOpen(true)} />
-            ) : (
-              <p className="text-[12.5px] text-ink-tertiary">Не вказано.</p>
-            )}
-          </SectionCard>
-
-          {viewerIsOwner ? (
-            <div className="glass rounded-2xl border border-border-subtle p-6">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Заповненість профілю</span>
-                <span className="font-display text-[13px] font-semibold text-ink-primary">{completeness}%</span>
-              </div>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-                <div className="h-full rounded-full bg-grad-purple-blue transition-all" style={{ width: `${completeness}%` }} />
-              </div>
-              <p className="mt-3 text-[11.5px] leading-relaxed text-ink-tertiary">
-                Заповнений профіль отримує більше уваги в Match-блоці та Feed.
-              </p>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
 
       {editModalOpen ? (
         <EditProfileModal
