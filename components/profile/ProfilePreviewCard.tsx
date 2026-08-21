@@ -3,9 +3,10 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Loader2, MapPin, X } from "lucide-react";
+import { Loader2, MapPin, Star, Trophy, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { getProfile, initials, type Profile } from "@/lib/profile";
+import { getProfileStats, type ProfileStats } from "@/lib/gamification";
 
 /**
  * Wraps a name/avatar so clicking it opens a small preview card instead of
@@ -29,6 +30,7 @@ export default function ProfilePreviewCard({
 }) {
   const [open, setOpen] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [stats, setStats] = useState<ProfileStats | null>(null);
   const [loading, setLoading] = useState(false);
 
   function openPreview() {
@@ -36,8 +38,9 @@ export default function ProfilePreviewCard({
     if (!profile && !loading) {
       setLoading(true);
       const supabase = createClient();
-      getProfile(supabase, userId).then((p) => {
+      Promise.all([getProfile(supabase, userId), getProfileStats(supabase, userId)]).then(([p, s]) => {
         setProfile(p);
+        setStats(s);
         setLoading(false);
       });
     }
@@ -126,10 +129,27 @@ export default function ProfilePreviewCard({
                   </div>
                 </div>
 
+                {stats ? (
+                  <div className="mt-4 flex items-center gap-4 rounded-xl border border-border-subtle bg-white/[0.02] px-3.5 py-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <Star size={14} className="text-gold" />
+                      <span className="text-[13px] font-medium text-ink-primary">
+                        {stats.reputation !== null ? stats.reputation.toFixed(1) : "—"}
+                      </span>
+                      <span className="text-[11px] text-ink-tertiary">репутація</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Trophy size={14} className="text-purple-soft" />
+                      <span className="text-[13px] font-medium text-ink-primary">{stats.level}</span>
+                      <span className="text-[11px] text-ink-tertiary">{stats.levelTitle}</span>
+                    </div>
+                  </div>
+                ) : null}
+
                 <Link
                   href={profileHref}
                   onClick={() => setOpen(false)}
-                  className="mt-5 flex w-full items-center justify-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2.5 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+                  className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2.5 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
                 >
                   Відвідати профіль
                 </Link>
