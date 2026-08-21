@@ -88,10 +88,8 @@ export default function Sidebar({
       }
     >
       <div className="mb-6 flex items-center justify-between px-2">
-        <div className="flex items-center gap-2">
-          <Image src="/anexa-logo.png" alt="ANEXA" width={32} height={32} className="rounded-lg" />
-          <span className="font-display text-[15px] font-semibold text-ink-primary">Anexa Club</span>
-        </div>
+        <Image src="/anexa-logo-wordmark.png" alt="ANEXA" width={92} height={28} className="h-7 w-auto" priority />
+
         <button
           type="button"
           onClick={onClose}
