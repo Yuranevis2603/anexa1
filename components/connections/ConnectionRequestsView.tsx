@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 import { Check, Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -66,10 +67,9 @@ export default function ConnectionRequestsView({ initialRequests }: { initialReq
         return (
           <div key={request.id} className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
             <Link href={profileHref} className="shrink-0">
-              <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
+              <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
                 {request.requester?.avatar_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={request.requester.avatar_url} alt={name} className="h-full w-full object-cover" />
+                  <Image src={request.requester.avatar_url} alt={name} fill sizes="44px" className="object-cover" />
                 ) : (
                   initials(name)
                 )}

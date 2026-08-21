@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { Check, Loader2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
@@ -42,10 +43,9 @@ export default function PotentialMatch({ userId, match }: { userId: string; matc
 
       <div className="mt-3 flex items-start gap-3">
         <Link href={profileHref} className="shrink-0">
-          <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
+          <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
             {match.profile.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={match.profile.avatar_url} alt={match.profile.full_name} className="h-full w-full object-cover" />
+              <Image src={match.profile.avatar_url} alt={match.profile.full_name} fill sizes="44px" className="object-cover" />
             ) : (
               initials(match.profile.full_name)
             )}

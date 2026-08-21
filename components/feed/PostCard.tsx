@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -248,10 +249,9 @@ export default function PostCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <Link href={profileHref} className="shrink-0">
-            <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white">
+            <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white">
               {item.author?.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={item.author.avatar_url} alt={name} className="h-full w-full object-cover" />
+                <Image src={item.author.avatar_url} alt={name} fill sizes="36px" className="object-cover" />
               ) : (
                 initials(name)
               )}
@@ -344,8 +344,14 @@ export default function PostCard({
 
       {item.image_url ? (
         <div className="mt-3 overflow-hidden rounded-xl border border-border-subtle">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={item.image_url} alt="" loading="lazy" className="max-h-96 w-full object-cover" />
+          <Image
+            src={item.image_url}
+            alt=""
+            width={1200}
+            height={800}
+            sizes="(max-width: 640px) 100vw, 640px"
+            className="max-h-96 w-full object-cover"
+          />
         </div>
       ) : null}
 
@@ -435,10 +441,9 @@ export default function PostCard({
               return (
                 <div key={comment.id} className="flex items-start gap-2.5">
                   <Link href={commentProfileHref} className="shrink-0">
-                    <div className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white">
+                    <div className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white">
                       {comment.author?.avatar_url ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={comment.author.avatar_url} alt={commentName} className="h-full w-full object-cover" />
+                        <Image src={comment.author.avatar_url} alt={commentName} fill sizes="28px" className="object-cover" />
                       ) : (
                         initials(commentName)
                       )}

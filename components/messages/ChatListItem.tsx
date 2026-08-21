@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { initials } from "@/lib/profile";
 import { attachmentPreviewLabel, formatChatListTime, type ConversationSummary } from "@/lib/messages";
 
@@ -34,10 +35,9 @@ export default function ChatListItem({
       }`}
     >
       <div className="relative shrink-0">
-        <div className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
+        <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
           {other?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={other.avatar_url} alt={name} className="h-full w-full object-cover" />
+            <Image src={other.avatar_url} alt={name} fill sizes="44px" className="object-cover" />
           ) : (
             initials(name)
           )}

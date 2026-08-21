@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -326,10 +327,9 @@ export default function ProfileView({
       <section className="glass relative rounded-2xl border border-border-subtle p-6 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <Ring size={84} thickness={2.5} percent={completeness}>
-            <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-base-card text-xl font-semibold text-ink-primary">
+            <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-base-card text-xl font-semibold text-ink-primary">
               {current.avatar_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={current.avatar_url} alt={current.full_name} className="h-full w-full object-cover" />
+                <Image src={current.avatar_url} alt={current.full_name} fill sizes="80px" className="object-cover" />
               ) : (
                 initials(current.full_name)
               )}

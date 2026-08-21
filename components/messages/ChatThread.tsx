@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -226,10 +227,9 @@ export default function ChatThread({
           </button>
         ) : null}
         <div className="relative shrink-0">
-          <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
+          <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
             {other?.avatar_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={other.avatar_url} alt={name} className="h-full w-full object-cover" />
+              <Image src={other.avatar_url} alt={name} fill sizes="36px" className="object-cover" />
             ) : (
               initials(name)
             )}
@@ -280,13 +280,16 @@ export default function ChatThread({
                           rel="noopener noreferrer"
                           className="mb-1.5 block overflow-hidden rounded-2xl border border-border-subtle"
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element */}
-                          <img
-                            src={signedUrls.get(m.attachment_path)}
-                            alt={m.attachment_name ?? ""}
-                            loading="lazy"
-                            className="max-h-72 w-full object-cover"
-                          />
+                          {signedUrls.get(m.attachment_path) ? (
+                            <Image
+                              src={signedUrls.get(m.attachment_path)!}
+                              alt={m.attachment_name ?? ""}
+                              width={800}
+                              height={600}
+                              sizes="(max-width: 640px) 90vw, 480px"
+                              className="max-h-72 w-full object-cover"
+                            />
+                          ) : null}
                         </a>
                       ) : (
                         <a

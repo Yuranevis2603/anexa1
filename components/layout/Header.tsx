@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { Search, Bell, ChevronDown, Menu } from "lucide-react";
 
 export default function Header({
@@ -45,10 +46,9 @@ export default function Header({
         </button>
 
         <button className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.05]">
-          <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10">
+          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10">
             {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarUrl} alt={userName} className="h-full w-full object-cover" />
+              <Image src={avatarUrl} alt={userName} fill sizes="32px" className="object-cover" />
             ) : null}
           </div>
           <div className="hidden text-left sm:block">

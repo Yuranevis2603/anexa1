@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initials, type Profile } from "@/lib/profile";
@@ -228,10 +229,9 @@ export default function FeedView({
         onClick={() => setModalOpen(true)}
         className="glass mt-4 flex w-full items-center gap-3 rounded-2xl border border-border-subtle p-3 text-left transition-colors hover:bg-white/[0.04] sm:p-3.5"
       >
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10">
+        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10">
           {profile?.avatar_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={profile.avatar_url} alt="" className="h-full w-full object-cover" />
+            <Image src={profile.avatar_url} alt="" fill sizes="40px" className="object-cover" />
           ) : (
             initials(profile?.full_name ?? "?")
           )}
