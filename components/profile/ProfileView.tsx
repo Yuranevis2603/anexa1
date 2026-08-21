@@ -27,13 +27,12 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { initials, profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
-import { acceptConnection, getConnectionState, requestConnection, type ConnectionState } from "@/lib/connections";
-import { follow, isFollowing, unfollow } from "@/lib/follows";
-import { blockUser, isUserBlocked, unblockUser } from "@/lib/moderation";
+import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
+import { follow, unfollow } from "@/lib/follows";
+import { blockUser, unblockUser } from "@/lib/moderation";
 import {
   computeLevelProgress,
   getLevels,
-  getMyReviewOf,
   getProfileStats,
   type Level,
   type LevelProgress,
@@ -196,17 +195,12 @@ export default function ProfileView({
       }
 
       if (canInteract && viewerId) {
-        const [isFollow, isBlock, reviewed, connState] = await Promise.all([
-          isFollowing(supabase, viewerId, current.id),
-          isUserBlocked(supabase, viewerId, current.id),
-          getMyReviewOf(supabase, viewerId, current.id),
-          getConnectionState(supabase, viewerId, current.id),
-        ]);
+        const relation = await getViewerRelation(supabase, viewerId, current.id);
         if (cancelled) return;
-        setFollowing(isFollow);
-        setBlocked(isBlock);
-        setHasReviewed(reviewed);
-        setConnectionState(connState);
+        setFollowing(relation.following);
+        setBlocked(relation.blocked);
+        setHasReviewed(relation.reviewed);
+        setConnectionState(relation.connection);
       }
     }
 

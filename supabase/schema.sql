@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-20 (latest: AX earning sources).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-21 (latest: consolidated ProfileView RPCs).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -936,13 +936,16 @@ revoke execute on function public.sync_reviewee_reputation() from public, anon, 
 
 -- Narrow, deliberately-public read of profile_gamification for members other
 -- than the row's owner (whose select policy above blocks them otherwise):
--- reputation/review_count/derived level+title, never the raw ax_points.
+-- reputation/review_count/derived level+title, plus ax_points itself when
+-- (and only when) the caller IS p_user_id — one round trip covers both the
+-- public stats and the owner's own private balance, instead of a second,
+-- RLS-gated query against profile_gamification directly.
 -- A SECURITY DEFINER view would trip Supabase's linter at ERROR level for
 -- the same RLS-bypass pattern; a function is the safer, more auditable shape
 -- and EXECUTE is deliberately left granted here (unlike the trigger
 -- functions above) since this one is meant to be called directly.
 create or replace function public.get_profile_public_stats(p_user_id uuid)
-returns table (reputation numeric, review_count integer, level integer, level_title text)
+returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer)
 language sql
 stable
 security definer
@@ -958,12 +961,67 @@ as $$
     coalesce(
       (select l.title from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
       'Starter'
-    ) as level_title
+    ) as level_title,
+    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points
   from public.profile_gamification pg
   where pg.user_id = p_user_id;
 $$;
 
 grant execute on function public.get_profile_public_stats(uuid) to authenticated;
+
+-- One-shot "how does the viewer relate to this profile" lookup, replacing 4
+-- separate client queries (isFollowing, isUserBlocked, getMyReviewOf,
+-- getConnectionState). SECURITY INVOKER (the default) is correct here —
+-- every underlying table's own RLS already scopes rows to p_viewer_id when
+-- it equals auth.uid() (the only legitimate caller), so this needs no
+-- elevated privileges at all.
+create or replace function public.get_viewer_relation(p_viewer_id uuid, p_target_id uuid)
+returns table (
+  following boolean,
+  blocked boolean,
+  reviewed boolean,
+  connection_status text,
+  connection_id uuid
+)
+language sql
+stable
+set search_path = public
+as $$
+  select
+    exists (
+      select 1 from public.follows f
+      where f.follower_id = p_viewer_id and f.followee_id = p_target_id
+    ) as following,
+    exists (
+      select 1 from public.user_blocks b
+      where b.blocker_id = p_viewer_id and b.blocked_id = p_target_id
+    ) as blocked,
+    exists (
+      select 1 from public.reviews r
+      where r.reviewer_id = p_viewer_id and r.reviewee_id = p_target_id
+    ) as reviewed,
+    coalesce(
+      (select 'connected' from public.connections c
+        where c.status = 'accepted'
+          and ((c.requester_id = p_viewer_id and c.addressee_id = p_target_id)
+            or (c.requester_id = p_target_id and c.addressee_id = p_viewer_id))
+        limit 1),
+      (select 'pending_sent' from public.connections c
+        where c.status = 'pending' and c.requester_id = p_viewer_id and c.addressee_id = p_target_id
+        limit 1),
+      (select 'pending_received' from public.connections c
+        where c.status = 'pending' and c.requester_id = p_target_id and c.addressee_id = p_viewer_id
+        limit 1),
+      'none'
+    ) as connection_status,
+    (
+      select c.id from public.connections c
+      where c.status = 'pending' and c.requester_id = p_target_id and c.addressee_id = p_viewer_id
+      limit 1
+    ) as connection_id;
+$$;
+
+grant execute on function public.get_viewer_relation(uuid, uuid) to authenticated;
 
 -- ============================================================================
 -- AX earning sources

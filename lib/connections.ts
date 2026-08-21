@@ -119,6 +119,58 @@ export async function getConnectionState(
   return { status: "none" };
 }
 
+export type ViewerRelation = {
+  following: boolean;
+  blocked: boolean;
+  reviewed: boolean;
+  connection: ConnectionState;
+};
+
+/**
+ * One round trip instead of four: replaces isFollowing + isUserBlocked +
+ * getMyReviewOf + getConnectionState, which is what a profile page needs to
+ * know about the viewer's relationship to the person it's showing. Backed
+ * by the get_viewer_relation RPC (SECURITY INVOKER — it needs no elevated
+ * privileges since every underlying table's own RLS already scopes rows to
+ * viewerId when it's the caller's own auth.uid()).
+ */
+export async function getViewerRelation(
+  supabase: SupabaseClient,
+  viewerId: string,
+  targetId: string
+): Promise<ViewerRelation> {
+  const { data, error } = await supabase.rpc("get_viewer_relation", {
+    p_viewer_id: viewerId,
+    p_target_id: targetId,
+  });
+
+  if (error) {
+    console.error("getViewerRelation failed:", error.message);
+    return { following: false, blocked: false, reviewed: false, connection: { status: "none" } };
+  }
+
+  const row = (
+    data as
+      | { following: boolean; blocked: boolean; reviewed: boolean; connection_status: string; connection_id: string | null }[]
+      | null
+  )?.[0];
+
+  if (!row) {
+    return { following: false, blocked: false, reviewed: false, connection: { status: "none" } };
+  }
+
+  const connection: ConnectionState =
+    row.connection_status === "connected"
+      ? { status: "connected" }
+      : row.connection_status === "pending_sent"
+        ? { status: "pending_sent" }
+        : row.connection_status === "pending_received" && row.connection_id
+          ? { status: "pending_received", connectionId: row.connection_id }
+          : { status: "none" };
+
+  return { following: row.following, blocked: row.blocked, reviewed: row.reviewed, connection };
+}
+
 export async function acceptConnection(supabase: SupabaseClient, connectionId: string): Promise<void> {
   const { error } = await supabase.from("connections").update({ status: "accepted" }).eq("id", connectionId);
   if (error) {
