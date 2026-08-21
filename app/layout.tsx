@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Anexa Club — Приватна бізнес-спільнота",
   description: "Приватна бізнес-спільнота нового рівня.",
+  icons: {
+    icon: "/anexa-logo.png",
+  },
 };
 
 export default function RootLayout({

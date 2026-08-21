@@ -1,9 +1,8 @@
 "use client";
 
-import Image from "next/image";
-import { initials } from "@/lib/profile";
 import { attachmentPreviewLabel, formatChatListTime, type ConversationSummary } from "@/lib/messages";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 export default function ChatListItem({
   conversation,
@@ -38,18 +37,20 @@ export default function ChatListItem({
       <div className="relative shrink-0">
         {other ? (
           <ProfilePreviewCard userId={other.id}>
-            <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
-              {other.avatar_url ? (
-                <Image src={other.avatar_url} alt={name} fill sizes="44px" className="object-cover" />
-              ) : (
-                initials(name)
-              )}
-            </div>
+            <Avatar
+              src={other.avatar_url}
+              name={name}
+              size={44}
+              className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple"
+            />
           </ProfilePreviewCard>
         ) : (
-          <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple">
-            {initials(name)}
-          </div>
+          <Avatar
+            src={null}
+            name={name}
+            size={44}
+            className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white shadow-glow-purple"
+          />
         )}
         {online ? (
           <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-base bg-success" />

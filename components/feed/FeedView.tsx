@@ -1,12 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { initials, type Profile } from "@/lib/profile";
+import type { Profile } from "@/lib/profile";
 import type { MatchCandidate } from "@/lib/match";
 import { getBlockedUserIds } from "@/lib/moderation";
+import Avatar from "@/components/ui/Avatar";
 import {
   FEED_FILTERS,
   FEED_PAGE_SIZE,
@@ -229,13 +229,12 @@ export default function FeedView({
         onClick={() => setModalOpen(true)}
         className="glass mt-4 flex w-full items-center gap-3 rounded-2xl border border-border-subtle p-3 text-left transition-colors hover:bg-white/[0.04] sm:p-3.5"
       >
-        <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10">
-          {profile?.avatar_url ? (
-            <Image src={profile.avatar_url} alt="" fill sizes="40px" className="object-cover" />
-          ) : (
-            initials(profile?.full_name ?? "?")
-          )}
-        </div>
+        <Avatar
+          src={profile?.avatar_url}
+          name={profile?.full_name ?? "?"}
+          size={40}
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white sm:h-10 sm:w-10"
+        />
         <span className="flex-1 truncate text-[13px] text-ink-tertiary sm:text-[13.5px]">
           Поділіться ідеєю, проєктом чи можливістю...
         </span>

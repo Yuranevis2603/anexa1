@@ -1,12 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { Loader2, MapPin, Star, Trophy, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { getProfile, initials, type Profile } from "@/lib/profile";
+import { getProfile, type Profile } from "@/lib/profile";
 import { getProfileStats, type ProfileStats } from "@/lib/gamification";
+import Avatar from "@/components/ui/Avatar";
 
 /**
  * Wraps a name/avatar so clicking it opens a small preview card instead of
@@ -107,13 +107,12 @@ export default function ProfilePreviewCard({
             ) : profile ? (
               <>
                 <div className="mt-4 flex items-center gap-3">
-                  <div className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[15px] font-semibold text-white">
-                    {profile.avatar_url ? (
-                      <Image src={profile.avatar_url} alt={profile.full_name} fill sizes="56px" className="object-cover" />
-                    ) : (
-                      initials(profile.full_name)
-                    )}
-                  </div>
+                  <Avatar
+                    src={profile.avatar_url}
+                    name={profile.full_name}
+                    size={56}
+                    className="relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[15px] font-semibold text-white"
+                  />
                   <div className="min-w-0">
                     <p className="truncate text-[15px] font-semibold text-ink-primary">{profile.full_name}</p>
                     {profile.role_title || profile.company ? (

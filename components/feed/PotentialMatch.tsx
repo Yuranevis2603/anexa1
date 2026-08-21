@@ -1,14 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { Check, Loader2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { requestConnection } from "@/lib/connections";
-import { initials } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import type { MatchCandidate } from "@/lib/match";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 export default function PotentialMatch({ userId, match }: { userId: string; match: MatchCandidate }) {
   const { showToast } = useToast();
@@ -43,13 +42,12 @@ export default function PotentialMatch({ userId, match }: { userId: string; matc
       <div className="mt-3 flex items-start gap-3">
         <ProfilePreviewCard userId={match.profile.id}>
           <div className="shrink-0">
-            <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-              {match.profile.avatar_url ? (
-                <Image src={match.profile.avatar_url} alt={match.profile.full_name} fill sizes="44px" className="object-cover" />
-              ) : (
-                initials(match.profile.full_name)
-              )}
-            </div>
+            <Avatar
+              src={match.profile.avatar_url}
+              name={match.profile.full_name}
+              size={44}
+              className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+            />
           </div>
         </ProfilePreviewCard>
 

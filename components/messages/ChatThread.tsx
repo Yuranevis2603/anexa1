@@ -5,7 +5,6 @@ import Image from "next/image";
 import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
-import { initials } from "@/lib/profile";
 import {
   attachmentPreviewLabel,
   formatDaySeparator,
@@ -23,6 +22,7 @@ import {
 } from "@/lib/messages";
 import { useTypingPresence } from "@/lib/presence";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 const MAX_ATTACHMENT_MB = 15;
 
@@ -230,18 +230,20 @@ export default function ChatThread({
         <div className="relative shrink-0">
           {other ? (
             <ProfilePreviewCard userId={other.id}>
-              <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-                {other.avatar_url ? (
-                  <Image src={other.avatar_url} alt={name} fill sizes="36px" className="object-cover" />
-                ) : (
-                  initials(name)
-                )}
-              </div>
+              <Avatar
+                src={other.avatar_url}
+                name={name}
+                size={36}
+                className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+              />
             </ProfilePreviewCard>
           ) : (
-            <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-              {initials(name)}
-            </div>
+            <Avatar
+              src={null}
+              name={name}
+              size={36}
+              className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+            />
           )}
           {online ? (
             <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-base bg-success" />

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -25,7 +24,7 @@ import {
   Zap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { initials, profileCompleteness, type Profile } from "@/lib/profile";
+import { profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
 import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
 import { follow, unfollow } from "@/lib/follows";
@@ -47,6 +46,7 @@ import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
 import GamificationInfoModal from "./GamificationInfoModal";
 import PostCard from "@/components/feed/PostCard";
+import Avatar from "@/components/ui/Avatar";
 
 function Ring({
   size = 76,
@@ -323,13 +323,12 @@ export default function ProfileView({
       <section className="glass relative rounded-2xl border border-border-subtle p-6 sm:p-7">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <Ring size={84} thickness={2.5} percent={completeness}>
-            <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-base-card text-xl font-semibold text-ink-primary">
-              {current.avatar_url ? (
-                <Image src={current.avatar_url} alt={current.full_name} fill sizes="80px" className="object-cover" />
-              ) : (
-                initials(current.full_name)
-              )}
-            </div>
+            <Avatar
+              src={current.avatar_url}
+              name={current.full_name}
+              size={80}
+              className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-full bg-base-card text-xl font-semibold text-ink-primary"
+            />
           </Ring>
 
           <div className="min-w-0 flex-1">

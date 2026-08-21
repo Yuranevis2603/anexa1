@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { Search, Bell, ChevronDown, Menu, MessageCircle, UserPlus } from "lucide-react";
+import Avatar from "@/components/ui/Avatar";
 
 export default function Header({
   userName = "Марта Коваленко",
@@ -116,11 +116,12 @@ export default function Header({
           href="/dashboard/profile"
           className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-white/[0.05]"
         >
-          <div className="relative h-8 w-8 shrink-0 overflow-hidden rounded-full bg-white/10">
-            {avatarUrl ? (
-              <Image src={avatarUrl} alt={userName} fill sizes="32px" className="object-cover" />
-            ) : null}
-          </div>
+          <Avatar
+            src={avatarUrl}
+            name={userName}
+            size={32}
+            className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[11px] font-semibold text-white"
+          />
           <div className="hidden text-left sm:block">
             <p className="text-[13px] font-medium text-ink-primary">{userName}</p>
             <p className="text-[11px] text-ink-tertiary">{userRole}</p>

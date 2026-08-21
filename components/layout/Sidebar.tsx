@@ -2,6 +2,7 @@
 
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
+import Image from "next/image";
 import { Home, Users, MessageCircle, User, Settings, Bookmark, UserPlus, X } from "lucide-react";
 
 type NavItem = {
@@ -88,9 +89,7 @@ export default function Sidebar({
     >
       <div className="mb-6 flex items-center justify-between px-2">
         <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-grad-purple-blue text-sm font-bold text-white shadow-glow-purple">
-            A
-          </div>
+          <Image src="/anexa-logo.png" alt="ANEXA" width={32} height={32} className="rounded-lg" />
           <span className="font-display text-[15px] font-semibold text-ink-primary">Anexa Club</span>
         </div>
         <button

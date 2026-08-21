@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { Check, Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { acceptConnection, declineConnection, type IncomingConnectionRequest } from "@/lib/connections";
-import { initials } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 
 export default function ConnectionRequestsView({ initialRequests }: { initialRequests: IncomingConnectionRequest[] }) {
   const router = useRouter();
@@ -67,13 +66,12 @@ export default function ConnectionRequestsView({ initialRequests }: { initialReq
           <div key={request.id} className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4">
             <ProfilePreviewCard userId={request.requester_id}>
               <div className="shrink-0">
-                <div className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white">
-                  {request.requester?.avatar_url ? (
-                    <Image src={request.requester.avatar_url} alt={name} fill sizes="44px" className="object-cover" />
-                  ) : (
-                    initials(name)
-                  )}
-                </div>
+                <Avatar
+                  src={request.requester?.avatar_url}
+                  name={name}
+                  size={44}
+                  className="relative flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[13px] font-semibold text-white"
+                />
               </div>
             </ProfilePreviewCard>
 

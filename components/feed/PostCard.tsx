@@ -13,11 +13,11 @@ import {
   Share2,
   Trash2,
 } from "lucide-react";
-import { initials } from "@/lib/profile";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import { getOrCreateConversation } from "@/lib/messages";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import Avatar from "@/components/ui/Avatar";
 import {
   createComment,
   ctaLabel,
@@ -250,13 +250,12 @@ export default function PostCard({
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <ProfilePreviewCard userId={item.user_id} isOwn={isOwn}>
             <div className="shrink-0">
-              <div className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white">
-                {item.author?.avatar_url ? (
-                  <Image src={item.author.avatar_url} alt={name} fill sizes="36px" className="object-cover" />
-                ) : (
-                  initials(name)
-                )}
-              </div>
+              <Avatar
+                src={item.author?.avatar_url}
+                name={name}
+                size={36}
+                className="relative flex h-9 w-9 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
+              />
             </div>
           </ProfilePreviewCard>
           <div className="min-w-0 flex-1">
@@ -443,13 +442,12 @@ export default function PostCard({
                 <div key={comment.id} className="flex items-start gap-2.5">
                   <ProfilePreviewCard userId={comment.user_id} isOwn={commentIsOwn}>
                     <div className="shrink-0">
-                      <div className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white">
-                        {comment.author?.avatar_url ? (
-                          <Image src={comment.author.avatar_url} alt={commentName} fill sizes="28px" className="object-cover" />
-                        ) : (
-                          initials(commentName)
-                        )}
-                      </div>
+                      <Avatar
+                        src={comment.author?.avatar_url}
+                        name={commentName}
+                        size={28}
+                        className="relative flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white"
+                      />
                     </div>
                   </ProfilePreviewCard>
                   <div className="min-w-0 flex-1 rounded-xl bg-base-surface px-3 py-2">
