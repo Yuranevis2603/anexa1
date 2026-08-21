@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-20 (latest: AX privacy).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-20 (latest: AX earning sources).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -699,6 +699,33 @@ create policy "profile_gamification_select_own"
   using (user_id = (select auth.uid()));
 
 -- ============================================================================
+-- ax_events
+-- Audit ledger for every AX award: what it was for, how much, and when.
+-- Also what the daily-cap check in award_ax() counts against (see Triggers
+-- & functions below). Read-only to the client (own rows only) — never
+-- written directly, only by triggers.
+-- ============================================================================
+create table if not exists public.ax_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  source text not null check (source in (
+    'profile_completion', 'post', 'like_received', 'comment_received',
+    'connection_accepted', 'follower_received', 'project_added', 'review_received'
+  )),
+  amount integer not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_ax_events_user_source_time on public.ax_events (user_id, source, created_at);
+
+alter table public.ax_events enable row level security;
+
+create policy "ax_events_select_own"
+  on public.ax_events for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
+-- ============================================================================
 -- reviews
 -- One rating a member can leave per person they've interacted with.
 -- reviewee_id's aggregated reputation/review_count is kept in sync by the
@@ -856,6 +883,10 @@ begin
           profile_completion_bonus_awarded = true,
           updated_at = now()
       where not public.profile_gamification.profile_completion_bonus_awarded;
+
+    if found then
+      insert into public.ax_events (user_id, source, amount) values (new.id, 'profile_completion', 100);
+    end if;
   end if;
   return new;
 end;
@@ -933,6 +964,197 @@ as $$
 $$;
 
 grant execute on function public.get_profile_public_stats(uuid) to authenticated;
+
+-- ============================================================================
+-- AX earning sources
+-- Every award goes through award_ax(), which logs to ax_events and enforces
+-- a rolling-24h cap per (user, source) so none of these can be farmed.
+-- ============================================================================
+create or replace function public.award_ax(
+  p_user_id uuid,
+  p_source text,
+  p_amount integer,
+  p_daily_cap integer
+)
+returns void
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_today_count integer;
+begin
+  select count(*) into v_today_count
+  from public.ax_events
+  where user_id = p_user_id
+    and source = p_source
+    and created_at >= now() - interval '1 day';
+
+  if v_today_count >= p_daily_cap then
+    return;
+  end if;
+
+  insert into public.ax_events (user_id, source, amount) values (p_user_id, p_source, p_amount);
+
+  insert into public.profile_gamification (user_id, ax_points)
+  values (p_user_id, p_amount)
+  on conflict (user_id) do update
+    set ax_points = public.profile_gamification.ax_points + p_amount,
+        updated_at = now();
+end;
+$$;
+
+revoke execute on function public.award_ax(uuid, text, integer, integer) from public, anon, authenticated;
+
+-- Post published — +5 AX, max 3/day (15 AX/day).
+create or replace function public.award_post_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.user_id, 'post', 5, 3);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_post_ax on public.activity_items;
+create trigger trg_award_post_ax
+  after insert on public.activity_items
+  for each row execute function public.award_post_ax();
+
+revoke execute on function public.award_post_ax() from public, anon, authenticated;
+
+-- Like received on your post — +1 AX, max 20/day. Self-likes don't count.
+create or replace function public.award_like_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_post_owner uuid;
+begin
+  select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
+  if v_post_owner is not null and v_post_owner <> new.user_id then
+    perform public.award_ax(v_post_owner, 'like_received', 1, 20);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_like_ax on public.activity_likes;
+create trigger trg_award_like_ax
+  after insert on public.activity_likes
+  for each row execute function public.award_like_ax();
+
+revoke execute on function public.award_like_ax() from public, anon, authenticated;
+
+-- Comment received on your post — +2 AX, max 10/day. Self-comments don't count.
+create or replace function public.award_comment_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_post_owner uuid;
+begin
+  select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
+  if v_post_owner is not null and v_post_owner <> new.user_id then
+    perform public.award_ax(v_post_owner, 'comment_received', 2, 10);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_comment_ax on public.activity_comments;
+create trigger trg_award_comment_ax
+  after insert on public.activity_comments
+  for each row execute function public.award_comment_ax();
+
+revoke execute on function public.award_comment_ax() from public, anon, authenticated;
+
+-- Connection request accepted — +10 AX to both sides, max 5/day each.
+-- Nothing in the app sets connections.status to 'accepted' yet (only the
+-- "Познайомитися" request itself is wired up) — ready for whenever an
+-- accept flow ships, harmless (never fires) until then.
+create or replace function public.award_connection_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.status = 'accepted' and old.status is distinct from 'accepted' then
+    perform public.award_ax(new.requester_id, 'connection_accepted', 10, 5);
+    perform public.award_ax(new.addressee_id, 'connection_accepted', 10, 5);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_connection_ax on public.connections;
+create trigger trg_award_connection_ax
+  after update on public.connections
+  for each row execute function public.award_connection_ax();
+
+revoke execute on function public.award_connection_ax() from public, anon, authenticated;
+
+-- New follower — +1 AX, max 15/day.
+create or replace function public.award_follow_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.followee_id, 'follower_received', 1, 15);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_follow_ax on public.follows;
+create trigger trg_award_follow_ax
+  after insert on public.follows
+  for each row execute function public.award_follow_ax();
+
+revoke execute on function public.award_follow_ax() from public, anon, authenticated;
+
+-- Project added to portfolio — +15 AX, max 2/day.
+create or replace function public.award_project_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.user_id, 'project_added', 15, 2);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_project_ax on public.projects;
+create trigger trg_award_project_ax
+  after insert on public.projects
+  for each row execute function public.award_project_ax();
+
+revoke execute on function public.award_project_ax() from public, anon, authenticated;
+
+-- Review received — +20 AX, max 5/day (on top of the existing unique
+-- (reviewer_id, reviewee_id) constraint, which already stops any single
+-- pair from farming this repeatedly).
+create or replace function public.award_review_ax()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  perform public.award_ax(new.reviewee_id, 'review_received', 20, 5);
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_award_review_ax on public.reviews;
+create trigger trg_award_review_ax
+  after insert on public.reviews
+  for each row execute function public.award_review_ax();
+
+revoke execute on function public.award_review_ax() from public, anon, authenticated;
 
 -- Project-level event trigger (public.rls_auto_enable) automatically runs
 -- `alter table ... enable row level security` on every newly created table
