@@ -120,6 +120,19 @@ export async function getUserActivity(
   return (data ?? []) as unknown as FeedItem[];
 }
 
+/** Single post by id — for permalinks (e.g. a like/comment notification
+ * deep-linking to the exact post instead of the general feed). */
+export async function getPostById(supabase: SupabaseClient, id: string): Promise<FeedItem | null> {
+  const { data, error } = await supabase.from("activity_items").select(FEED_SELECT).eq("id", id).maybeSingle();
+
+  if (error) {
+    console.error("getPostById failed:", error.message);
+    return null;
+  }
+
+  return data as unknown as FeedItem | null;
+}
+
 export const FEED_PAGE_SIZE = 10;
 // "Для тебе" ranks within a bounded pool instead of the whole table — keeps
 // the personalization pass cheap while still avoiding "load everything".

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   Ban,
@@ -33,9 +33,11 @@ import {
   computeLevelProgress,
   getLevels,
   getProfileStats,
+  getReviews,
   type Level,
   type LevelProgress,
   type ProfileStats,
+  type Review,
 } from "@/lib/gamification";
 import { getUserActivity, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
 import { getProjects, type Project } from "@/lib/projects";
@@ -46,6 +48,7 @@ import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
 import GamificationInfoModal from "./GamificationInfoModal";
 import PostCard from "@/components/feed/PostCard";
+import ProfilePreviewCard from "./ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
 
@@ -136,6 +139,7 @@ export default function ProfileView({
   const [startingChat, setStartingChat] = useState(false);
 
   const [projects, setProjects] = useState<Project[]>([]);
+  const [reviews, setReviews] = useState<Review[]>([]);
   const [activity, setActivity] = useState<FeedItem[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -162,7 +166,8 @@ export default function ProfileView({
   const [gamificationInfoOpen, setGamificationInfoOpen] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<"activity" | "info">("activity");
+  const searchParams = useSearchParams();
+  const [activeTab, setActiveTab] = useState<"activity" | "info">(searchParams.get("tab") === "info" ? "info" : "activity");
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
@@ -173,14 +178,16 @@ export default function ProfileView({
 
     async function load() {
       setLoadingSections(true);
-      const [projectsData, activityData, statsData, levelsData] = await Promise.all([
+      const [projectsData, reviewsData, activityData, statsData, levelsData] = await Promise.all([
         getProjects(supabase, current.id),
+        getReviews(supabase, current.id),
         getUserActivity(supabase, current.id),
         getProfileStats(supabase, current.id),
         getLevels(supabase),
       ]);
       if (cancelled) return;
       setProjects(projectsData);
+      setReviews(reviewsData);
       setActivity(activityData);
       setStats(statsData);
       setLevels(levelsData);
@@ -648,6 +655,51 @@ export default function ProfileView({
                           {p.status === "active" ? "Будується" : "Завершено"}
                         </span>
                         {p.team_size ? <span className="text-[11px] text-ink-tertiary">Команда: {p.team_size}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </SectionCard>
+
+            <SectionCard title="Відгуки" icon={Star}>
+              {reviews.length === 0 ? (
+                <p className="text-[13.5px] text-ink-tertiary">Відгуків поки немає.</p>
+              ) : (
+                <div className="flex flex-col gap-4">
+                  {reviews.map((r) => (
+                    <div key={r.id} className="flex items-start gap-3">
+                      <ProfilePreviewCard userId={r.reviewerId}>
+                        <Avatar
+                          src={r.reviewerAvatarUrl}
+                          name={r.reviewerName}
+                          size={36}
+                          className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[11px] font-semibold text-white"
+                        />
+                      </ProfilePreviewCard>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <ProfilePreviewCard userId={r.reviewerId}>
+                            <span className="truncate text-[13px] font-medium text-ink-primary hover:underline">
+                              {r.reviewerName}
+                            </span>
+                          </ProfilePreviewCard>
+                          <span className="shrink-0 text-[11px] text-ink-tertiary">
+                            {new Date(r.createdAt).toLocaleDateString("uk-UA", { day: "numeric", month: "short" })}
+                          </span>
+                        </div>
+                        <div className="mt-0.5 flex items-center gap-0.5">
+                          {[1, 2, 3, 4, 5].map((i) => (
+                            <Star
+                              key={i}
+                              size={12}
+                              className={i <= r.rating ? "fill-gold text-gold" : "text-ink-tertiary"}
+                            />
+                          ))}
+                        </div>
+                        {r.comment ? (
+                          <p className="mt-1.5 text-[13px] leading-relaxed text-ink-secondary">{r.comment}</p>
+                        ) : null}
                       </div>
                     </div>
                   ))}

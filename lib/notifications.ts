@@ -115,9 +115,12 @@ export function describeNotification(n: Notification): { text: string; href: str
   const actor = n.actorName ?? "Хтось";
   switch (n.type) {
     case "like":
-      return { text: `Лайк від ${actor}`, href: "/dashboard" };
+      return { text: `Лайк від ${actor}`, href: n.entityId ? `/dashboard/post/${n.entityId}` : "/dashboard" };
     case "comment":
-      return { text: `Новий коментар від ${actor}`, href: "/dashboard" };
+      return {
+        text: `Новий коментар від ${actor}`,
+        href: n.entityId ? `/dashboard/post/${n.entityId}?comments=1` : "/dashboard",
+      };
     case "follow":
       return { text: `Новий підписник: ${actor}`, href: n.actorId ? `/dashboard/people/${n.actorId}` : "/dashboard" };
     case "connection_request":
@@ -130,7 +133,7 @@ export function describeNotification(n: Notification): { text: string; href: str
         href: n.entityId ? `/dashboard/messages?c=${n.entityId}` : "/dashboard/messages",
       };
     case "review":
-      return { text: `Новий відгук від ${actor}`, href: "/dashboard/profile" };
+      return { text: `Новий відгук від ${actor}`, href: "/dashboard/profile?tab=info" };
   }
 }
 
