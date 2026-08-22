@@ -47,6 +47,7 @@ import ReportModal from "./ReportModal";
 import GamificationInfoModal from "./GamificationInfoModal";
 import PostCard from "@/components/feed/PostCard";
 import Avatar from "@/components/ui/Avatar";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 function Ring({
   size = 76,
@@ -420,6 +421,7 @@ export default function ProfileView({
           fixed action sheet instead — same modal pattern as EditProfileModal
           etc., just anchored to the viewport, not the trigger button. */}
       {menuOpen ? (
+        <ModalPortal>
         <div
           className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
           onClick={() => setMenuOpen(false)}
@@ -474,6 +476,7 @@ export default function ProfileView({
             </button>
           </div>
         </div>
+        </ModalPortal>
       ) : null}
 
       {/* ---------------- METRICS ---------------- */}

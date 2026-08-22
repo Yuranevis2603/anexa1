@@ -7,6 +7,7 @@ import { requestConnection } from "@/lib/connections";
 import { useToast } from "@/components/ui/ToastProvider";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 import Avatar from "@/components/ui/Avatar";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 type SearchResult = {
   id: string;
@@ -81,6 +82,7 @@ export default function InviteFriendModal({
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
       onClick={onClose}
@@ -165,5 +167,6 @@ export default function InviteFriendModal({
         </div>
       </div>
     </div>
+    </ModalPortal>
   );
 }

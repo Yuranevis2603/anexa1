@@ -5,6 +5,7 @@ import { Loader2, Star, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { submitReview } from "@/lib/gamification";
 import { useToast } from "@/components/ui/ToastProvider";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function ReviewModal({
   reviewerId,
@@ -50,6 +51,7 @@ export default function ReviewModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4">
       <div className="glass w-full max-w-sm rounded-t-2xl border border-border-subtle bg-base-card p-6 sm:rounded-2xl">
         <div className="mb-5 flex items-center justify-between">
@@ -106,5 +108,6 @@ export default function ReviewModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { ImagePlus, Loader2, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
+import ModalPortal from "@/components/ui/ModalPortal";
 import {
   CTA_TYPES,
   POST_TYPES,
@@ -126,6 +127,7 @@ export default function CreatePostModal({
   if (!open) return null;
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:p-4"
       onClick={handleClose}
@@ -310,5 +312,6 @@ export default function CreatePostModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

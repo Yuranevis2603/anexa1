@@ -5,6 +5,7 @@ import { ImagePlus, Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { initials, uploadAvatar, type Profile } from "@/lib/profile";
 import TagInput from "./TagInput";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 type EditableFields = {
   full_name: string;
@@ -128,6 +129,7 @@ export default function EditProfileModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4">
       <div className="glass max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-border-subtle bg-base-card p-6 sm:rounded-2xl">
         <div className="mb-5 flex items-center justify-between">
@@ -269,6 +271,7 @@ export default function EditProfileModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
 

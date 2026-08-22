@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { uploadAvatar } from "@/lib/profile";
 import { createCommunity, type Community } from "@/lib/communities";
 import Avatar from "@/components/ui/Avatar";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function CreateCommunityModal({
   userId,
@@ -69,6 +70,7 @@ export default function CreateCommunityModal({
   }
 
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
       onClick={onClose}
@@ -143,5 +145,6 @@ export default function CreateCommunityModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }
