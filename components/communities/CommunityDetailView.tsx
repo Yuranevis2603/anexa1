@@ -198,29 +198,16 @@ export default function CommunityDetailView({
         Усі спільноти
       </Link>
 
-      <div className="relative h-40 overflow-hidden rounded-2xl border border-border-subtle bg-gradient-to-br from-purple/25 via-base-card to-blue/20 sm:h-48">
-        {isOwner ? (
-          <button
-            type="button"
-            onClick={() => setEditOpen(true)}
-            className="glass absolute right-3 top-3 flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[12px] font-medium text-ink-primary transition-colors hover:bg-white/[0.1]"
-          >
-            <Settings2 size={13} />
-            Керувати спільнотою
-          </button>
-        ) : null}
-      </div>
-
-      <div className="px-1 sm:px-2">
-        <div className="-mt-10 flex flex-col items-start gap-4 sm:-mt-12 sm:flex-row sm:items-end sm:justify-between">
-          <div className="flex items-end gap-4">
+      <div className="glass rounded-2xl border border-border-subtle bg-gradient-to-br from-purple/[0.08] via-base-card to-blue/[0.06] p-5">
+        <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
             <Avatar
               src={community.iconUrl}
               name={community.name}
-              size={88}
-              className="relative flex h-[88px] w-[88px] shrink-0 items-center justify-center overflow-hidden rounded-2xl border-4 border-base bg-grad-purple-blue text-[26px] font-semibold text-white"
+              size={64}
+              className="relative flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-grad-purple-blue text-[19px] font-semibold text-white"
             />
-            <div className="min-w-0 pb-1">
+            <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="font-display text-lg font-semibold text-ink-primary sm:text-xl">{community.name}</h1>
                 {community.category ? (
@@ -241,7 +228,17 @@ export default function CommunityDetailView({
               </div>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-2 pb-1">
+          <div className="flex shrink-0 items-center gap-2">
+            {isOwner ? (
+              <button
+                type="button"
+                onClick={() => setEditOpen(true)}
+                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3.5 py-2 text-[12px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
+              >
+                <Settings2 size={13} />
+                Керувати
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={handleToggleMembership}
@@ -265,13 +262,15 @@ export default function CommunityDetailView({
               type="button"
               onClick={handleShare}
               aria-label="Скопіювати посилання на спільноту"
-              className="flex h-9 w-9 items-center justify-center rounded-lg border border-border-subtle text-ink-secondary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-subtle text-ink-secondary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
             >
               <Share2 size={15} />
             </button>
           </div>
         </div>
+      </div>
 
+      <div className="px-1 sm:px-2">
         <div className="mt-5 flex items-center gap-5 overflow-x-auto border-b border-border-subtle">
           {tabs.map((t) => (
             <button
