@@ -35,18 +35,11 @@ export default function FriendsView({
 
   const [tab, setTab] = useState<Tab>("friends");
   const [query, setQuery] = useState("");
-  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [onlineOnly, setOnlineOnly] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
   const onlineUsers = useOnlineUsers();
-
-  const allTags = useMemo(() => {
-    const set = new Set<string>();
-    friends.forEach((f) => f.tags.forEach((t) => set.add(t)));
-    return Array.from(set).sort();
-  }, [friends]);
 
   const allCompanies = useMemo(() => {
     const set = new Set<string>();
@@ -56,19 +49,9 @@ export default function FriendsView({
     return Array.from(set).sort();
   }, [friends]);
 
-  const activeFilterCount = selectedTags.size + (selectedCompany ? 1 : 0) + (onlineOnly ? 1 : 0);
-
-  function toggleTag(tag: string) {
-    setSelectedTags((prev) => {
-      const next = new Set(prev);
-      if (next.has(tag)) next.delete(tag);
-      else next.add(tag);
-      return next;
-    });
-  }
+  const activeFilterCount = (selectedCompany ? 1 : 0) + (onlineOnly ? 1 : 0);
 
   function resetFilters() {
-    setSelectedTags(new Set());
     setSelectedCompany(null);
     setOnlineOnly(false);
   }
@@ -76,14 +59,13 @@ export default function FriendsView({
   const filteredFriends = useMemo(() => {
     const term = query.trim().toLowerCase();
     return friends.filter((f) => {
-      if (selectedTags.size > 0 && !f.tags.some((t) => selectedTags.has(t))) return false;
       if (selectedCompany && f.company !== selectedCompany) return false;
       if (onlineOnly && !onlineUsers.has(f.friendId)) return false;
       if (!term) return true;
       const haystack = [f.fullName, f.roleTitle ?? "", f.company ?? "", ...f.tags].join(" ").toLowerCase();
       return haystack.includes(term);
     });
-  }, [friends, query, selectedTags, selectedCompany, onlineOnly, onlineUsers]);
+  }, [friends, query, selectedCompany, onlineOnly, onlineUsers]);
 
   const excludeIds = useMemo(() => new Set(friends.map((f) => f.friendId)), [friends]);
 
@@ -176,32 +158,6 @@ export default function FriendsView({
                         </div>
                       </div>
                     ) : null}
-
-                    <div className="mt-3">
-                      <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
-                        Теги
-                      </p>
-                      {allTags.length === 0 ? (
-                        <p className="px-2 py-1.5 text-[12px] text-ink-tertiary">Немає тегів у друзів.</p>
-                      ) : (
-                        <div className="flex flex-col gap-0.5">
-                          {allTags.map((tag) => (
-                            <label
-                              key={tag}
-                              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[12.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedTags.has(tag)}
-                                onChange={() => toggleTag(tag)}
-                                className="h-3.5 w-3.5 shrink-0 rounded border-border-strong accent-purple"
-                              />
-                              <span className="truncate">{tag}</span>
-                            </label>
-                          ))}
-                        </div>
-                      )}
-                    </div>
                   </div>
 
                   {activeFilterCount > 0 ? (
