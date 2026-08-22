@@ -1023,6 +1023,65 @@ $$;
 
 grant execute on function public.get_viewer_relation(uuid, uuid) to authenticated;
 
+-- Friends list ("Друзі" page) with a mutual-friends count per friend.
+-- SECURITY DEFINER is required here (unlike get_viewer_relation above):
+-- computing "mutual friends" needs to read each friend's *other* accepted
+-- connections, which is exactly what connections' own RLS hides from
+-- everyone but the two parties on that row. The p_user_id = auth.uid()
+-- check keeps it from being used to probe a stranger's friend graph.
+create or replace function public.get_friends_with_mutual_count(p_user_id uuid)
+returns table (
+  connection_id uuid,
+  friend_id uuid,
+  full_name text,
+  avatar_url text,
+  role_title text,
+  company text,
+  skills text[],
+  interests text[],
+  industries text[],
+  mutual_count bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with my_friends as (
+    select
+      c.id as connection_id,
+      case when c.requester_id = p_user_id then c.addressee_id else c.requester_id end as friend_id
+    from public.connections c
+    where c.status = 'accepted'
+      and p_user_id = (select auth.uid())
+      and (c.requester_id = p_user_id or c.addressee_id = p_user_id)
+  )
+  select
+    mf.connection_id,
+    mf.friend_id,
+    p.full_name,
+    p.avatar_url,
+    p.role_title,
+    p.company,
+    p.skills,
+    p.interests,
+    p.industries,
+    (
+      select count(*) from public.connections c2
+      where c2.status = 'accepted'
+        and c2.requester_id <> p_user_id and c2.addressee_id <> p_user_id
+        and (
+          (c2.requester_id = mf.friend_id and c2.addressee_id in (select friend_id from my_friends))
+          or (c2.addressee_id = mf.friend_id and c2.requester_id in (select friend_id from my_friends))
+        )
+    ) as mutual_count
+  from my_friends mf
+  join public.profiles p on p.id = mf.friend_id
+  order by p.full_name;
+$$;
+
+grant execute on function public.get_friends_with_mutual_count(uuid) to authenticated;
+
 -- ============================================================================
 -- AX earning sources
 -- Every award goes through award_ax(), which logs to ax_events and enforces
