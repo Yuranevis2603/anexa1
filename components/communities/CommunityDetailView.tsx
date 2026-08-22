@@ -11,7 +11,6 @@ import {
   ImagePlus,
   Loader2,
   MessageSquarePlus,
-  MoreVertical,
   Radio,
   Search,
   Settings2,
@@ -22,9 +21,7 @@ import { createClient } from "@/lib/supabase/client";
 import {
   formatMemberCount,
   joinCommunity,
-  kickMember,
   leaveCommunity,
-  setMemberRole,
   type Community,
   type CommunityMember,
   type CommunityRoleTier,
@@ -92,8 +89,6 @@ export default function CommunityDetailView({
   const [members, setMembers] = useState(initialMembers);
   const [memberQuery, setMemberQuery] = useState("");
   const [postCount, setPostCount] = useState(initialPostCount);
-  const [memberMenuFor, setMemberMenuFor] = useState<string | null>(null);
-  const [memberActionPending, setMemberActionPending] = useState<string | null>(null);
 
   const [activeLivestream, setActiveLivestream] = useState(initialActiveLivestream);
 
@@ -108,12 +103,6 @@ export default function CommunityDetailView({
   const isAdmin = isOwner || myRole === "admin";
   const isStaff = isAdmin || myRole === "moderator";
   const owner = useMemo(() => members.find((m) => m.isOwner) ?? null, [members]);
-
-  function canKickMember(m: CommunityMember): boolean {
-    if (m.isOwner) return false;
-    if (isOwner) return true;
-    return isAdmin && m.communityRole !== "admin";
-  }
 
   const filteredMembers = useMemo(() => {
     const term = memberQuery.trim().toLowerCase();
@@ -194,37 +183,13 @@ export default function CommunityDetailView({
     setThreads((prev) => prev.filter((t) => t.id !== threadId));
   }
 
-  async function handleSetRole(member: CommunityMember, role: CommunityRoleTier) {
-    if (memberActionPending) return;
-    setMemberActionPending(member.userId);
-    try {
-      const supabase = createClient();
-      await setMemberRole(supabase, community.id, member.userId, role);
-      setMembers((prev) => prev.map((m) => (m.userId === member.userId ? { ...m, communityRole: role } : m)));
-    } catch (err) {
-      showToast("error", "Не вдалося змінити роль.");
-      console.error("setMemberRole failed:", err);
-    } finally {
-      setMemberActionPending(null);
-      setMemberMenuFor(null);
-    }
+  function handleRoleChanged(memberId: string, role: CommunityRoleTier) {
+    setMembers((prev) => prev.map((m) => (m.userId === memberId ? { ...m, communityRole: role } : m)));
   }
 
-  async function handleKickMember(member: CommunityMember) {
-    if (memberActionPending) return;
-    setMemberActionPending(member.userId);
-    try {
-      const supabase = createClient();
-      await kickMember(supabase, community.id, member.userId);
-      setMembers((prev) => prev.filter((m) => m.userId !== member.userId));
-      setCommunity((c) => ({ ...c, memberCount: Math.max(c.memberCount - 1, 0) }));
-    } catch (err) {
-      showToast("error", "Не вдалося видалити учасника.");
-      console.error("kickMember failed:", err);
-    } finally {
-      setMemberActionPending(null);
-      setMemberMenuFor(null);
-    }
+  function handleMemberKicked(memberId: string) {
+    setMembers((prev) => prev.filter((m) => m.userId !== memberId));
+    setCommunity((c) => ({ ...c, memberCount: Math.max(c.memberCount - 1, 0) }));
   }
 
   function handleThreadPinnedChange(threadId: string, pinned: boolean) {
@@ -287,7 +252,7 @@ export default function CommunityDetailView({
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {isOwner ? (
+            {isAdmin ? (
               <button
                 type="button"
                 onClick={() => setEditOpen(true)}
@@ -476,107 +441,52 @@ export default function CommunityDetailView({
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    {filteredMembers.map((m) => {
-                      const hasMenu = !m.isOwner && (isOwner || canKickMember(m));
-                      return (
-                        <div key={m.userId} className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-3.5">
-                          <ProfilePreviewCard userId={m.userId}>
-                            <div className="relative shrink-0">
-                              <Avatar
-                                src={m.avatarUrl}
-                                name={m.fullName}
-                                size={40}
-                                className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
-                              />
-                              {onlineUsers.has(m.userId) ? (
-                                <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-base bg-success" />
+                    {filteredMembers.map((m) => (
+                      <ProfilePreviewCard key={m.userId} userId={m.userId}>
+                        <div className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-3.5">
+                          <div className="relative shrink-0">
+                            <Avatar
+                              src={m.avatarUrl}
+                              name={m.fullName}
+                              size={40}
+                              className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
+                            />
+                            {onlineUsers.has(m.userId) ? (
+                              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full border-2 border-base bg-success" />
+                            ) : null}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-[13px] font-medium text-ink-primary">{m.fullName}</p>
+                              {m.isOwner ? (
+                                <span className="shrink-0 rounded-md bg-purple/10 px-2 py-0.5 text-[10.5px] font-medium text-purple-soft">
+                                  Власник
+                                </span>
+                              ) : m.communityRole === "admin" ? (
+                                <span className="shrink-0 rounded-md bg-blue/10 px-2 py-0.5 text-[10.5px] font-medium text-blue">
+                                  Адмін
+                                </span>
+                              ) : m.communityRole === "moderator" ? (
+                                <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 text-[10.5px] font-medium text-success">
+                                  Модератор
+                                </span>
                               ) : null}
                             </div>
-                          </ProfilePreviewCard>
-                          <ProfilePreviewCard userId={m.userId}>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <p className="truncate text-[13px] font-medium text-ink-primary">{m.fullName}</p>
-                                {m.isOwner ? (
-                                  <span className="shrink-0 rounded-md bg-purple/10 px-2 py-0.5 text-[10.5px] font-medium text-purple-soft">
-                                    Власник
-                                  </span>
-                                ) : m.communityRole === "admin" ? (
-                                  <span className="shrink-0 rounded-md bg-blue/10 px-2 py-0.5 text-[10.5px] font-medium text-blue">
-                                    Адмін
-                                  </span>
-                                ) : m.communityRole === "moderator" ? (
-                                  <span className="shrink-0 rounded-md bg-success/10 px-2 py-0.5 text-[10.5px] font-medium text-success">
-                                    Модератор
-                                  </span>
-                                ) : null}
-                              </div>
-                              {m.roleTitle || m.company ? (
-                                <p className="truncate text-[11.5px] text-ink-tertiary">
-                                  {[m.roleTitle, m.company].filter(Boolean).join(" · ")}
-                                </p>
-                              ) : null}
-                            </div>
-                          </ProfilePreviewCard>
+                            {m.roleTitle || m.company ? (
+                              <p className="truncate text-[11.5px] text-ink-tertiary">
+                                {[m.roleTitle, m.company].filter(Boolean).join(" · ")}
+                              </p>
+                            ) : null}
+                          </div>
                           <div className="shrink-0 text-right">
                             <p className="text-[13px] font-semibold text-purple-soft">
                               {initialActivityCounts[m.userId] ?? 0}
                             </p>
                             <p className="text-[10.5px] text-ink-tertiary">внесків</p>
                           </div>
-                          {hasMenu ? (
-                            <div className="relative shrink-0">
-                              <button
-                                type="button"
-                                onClick={() => setMemberMenuFor((cur) => (cur === m.userId ? null : m.userId))}
-                                aria-label="Дії з учасником"
-                                disabled={memberActionPending === m.userId}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-ink-primary disabled:opacity-60"
-                              >
-                                {memberActionPending === m.userId ? (
-                                  <Loader2 size={15} className="animate-spin" />
-                                ) : (
-                                  <MoreVertical size={15} />
-                                )}
-                              </button>
-                              {memberMenuFor === m.userId ? (
-                                <div className="absolute right-0 top-9 z-10 w-48 overflow-hidden rounded-lg border border-border-subtle bg-base-card shadow-lg">
-                                  {isOwner ? (
-                                    <>
-                                      {(["admin", "moderator", "member"] as const)
-                                        .filter((r) => r !== m.communityRole)
-                                        .map((r) => (
-                                          <button
-                                            key={r}
-                                            type="button"
-                                            onClick={() => handleSetRole(m, r)}
-                                            className="flex w-full items-center px-3 py-2 text-left text-[12.5px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary"
-                                          >
-                                            {r === "admin"
-                                              ? "Зробити адміном"
-                                              : r === "moderator"
-                                                ? "Зробити модератором"
-                                                : "Зробити учасником"}
-                                          </button>
-                                        ))}
-                                    </>
-                                  ) : null}
-                                  {canKickMember(m) ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => handleKickMember(m)}
-                                      className="flex w-full items-center px-3 py-2 text-left text-[12.5px] text-danger transition-colors hover:bg-white/[0.05]"
-                                    >
-                                      Видалити зі спільноти
-                                    </button>
-                                  ) : null}
-                                </div>
-                              ) : null}
-                            </div>
-                          ) : null}
                         </div>
-                      );
-                    })}
+                      </ProfilePreviewCard>
+                    ))}
                   </div>
                 )}
               </div>
@@ -698,12 +608,17 @@ export default function CommunityDetailView({
       {editOpen ? (
         <EditCommunityModal
           community={community}
+          members={members}
+          isOwner={isOwner}
+          isAdmin={isAdmin}
           onClose={() => setEditOpen(false)}
           onSaved={(fields) => {
             setCommunity((c) => ({ ...c, ...fields }));
             setEditOpen(false);
             showToast("success", "Зміни збережено.");
           }}
+          onRoleChanged={handleRoleChanged}
+          onMemberKicked={handleMemberKicked}
         />
       ) : null}
     </div>
