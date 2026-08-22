@@ -72,6 +72,13 @@ create policy "Unused invite codes are readable for registration"
   to anon
   using (used_by is null);
 
+-- Referral system: any member can generate their own invite code (not just
+-- hand-seeded ones) to invite people into the club.
+create policy "invite_codes_insert_own"
+  on public.invite_codes for insert
+  to public
+  with check (created_by = (select auth.uid()));
+
 -- ============================================================================
 -- experience
 -- Work-experience entries shown on a member's profile.
@@ -1046,7 +1053,8 @@ create table if not exists public.ax_events (
   user_id uuid not null references public.profiles(id) on delete cascade,
   source text not null check (source in (
     'profile_completion', 'post', 'like_received', 'comment_received',
-    'connection_accepted', 'follower_received', 'project_added', 'review_received'
+    'connection_accepted', 'follower_received', 'project_added', 'review_received',
+    'referral'
   )),
   amount integer not null,
   created_at timestamptz not null default now()
@@ -1157,8 +1165,14 @@ create policy "user_reports_insert_own"
 -- their invite code as used in the same transaction. Runs as security
 -- definer so it works regardless of the caller's RLS/session state (e.g.
 -- before email confirmation, when the client has no session yet).
+--
+-- Referral payout lives here rather than its own trigger: the referrer id
+-- only exists as the result of this same UPDATE (invite_codes.created_by),
+-- so there's nothing separate to trigger off of.
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  v_referrer_id uuid;
 begin
   insert into public.profiles (id, full_name)
   values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Новий учасник'));
@@ -1167,7 +1181,13 @@ begin
     update public.invite_codes
     set used_by = new.id, used_at = now()
     where code = new.raw_user_meta_data->>'invite_code'
-      and used_by is null;
+      and used_by is null
+    returning created_by into v_referrer_id;
+
+    if v_referrer_id is not null then
+      perform public.award_ax(v_referrer_id, 'referral', 25, 10);
+      perform public.create_notification(v_referrer_id, new.id, 'referral_joined', 'profile', new.id);
+    end if;
   end if;
 
   return new;
@@ -1430,7 +1450,8 @@ create table if not exists public.notifications (
   user_id uuid not null references public.profiles(id),
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
-    'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review'
+    'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
+    'referral_joined'
   )),
   entity_type text,
   entity_id uuid,

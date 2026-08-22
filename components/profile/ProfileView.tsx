@@ -7,6 +7,7 @@ import {
   Ban,
   BadgeCheck,
   Check,
+  Copy,
   Flag,
   FolderKanban,
   Handshake,
@@ -25,6 +26,7 @@ import {
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { profileCompleteness, type Profile } from "@/lib/profile";
+import { createInviteCode, getMyInvites, type InviteCode } from "@/lib/invites";
 import { getOrCreateConversation } from "@/lib/messages";
 import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
 import { follow, unfollow } from "@/lib/follows";
@@ -51,6 +53,14 @@ import PostCard from "@/components/feed/PostCard";
 import ProfilePreviewCard from "./ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
+
+/** Ukrainian pluralization for the referral card's join count. */
+function formatJoinCount(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const word = mod10 >= 5 || mod10 === 0 || (mod100 >= 11 && mod100 <= 14) ? "приєднань" : "приєднання";
+  return `${count} ${word}`;
+}
 
 function Ring({
   size = 76,
@@ -154,6 +164,9 @@ export default function ProfileView({
   const [loadingSections, setLoadingSections] = useState(true);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
+  const [invites, setInvites] = useState<InviteCode[]>([]);
+  const [creatingInvite, setCreatingInvite] = useState(false);
+
   const [connectionState, setConnectionState] = useState<ConnectionState>({ status: "none" });
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [following, setFollowing] = useState(false);
@@ -171,6 +184,8 @@ export default function ProfileView({
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
+  const pendingInvite = invites.find((i) => !i.usedAt) ?? null;
+  const joinedInvites = invites.filter((i) => i.usedAt);
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +235,18 @@ export default function ProfileView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.id]);
+
+  useEffect(() => {
+    if (!viewerIsOwner) return;
+    let cancelled = false;
+    const supabase = createClient();
+    getMyInvites(supabase, current.id).then((data) => {
+      if (!cancelled) setInvites(data);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewerIsOwner, current.id]);
 
   // Only the owner has a real ax_points value to compute progress-to-next-level
   // from (see getProfileStats) — for anyone else, show the accurate level/title
@@ -323,6 +350,31 @@ export default function ProfileView({
       showToast("error", "Не вдалося скопіювати посилання.");
     }
     setMenuOpen(false);
+  }
+
+  async function handleCreateInvite() {
+    if (creatingInvite) return;
+    setCreatingInvite(true);
+    try {
+      const supabase = createClient();
+      const code = await createInviteCode(supabase, current.id);
+      setInvites((prev) => [{ code, createdAt: new Date().toISOString(), usedByName: null, usedAt: null }, ...prev]);
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Не вдалося створити запрошення.");
+      console.error("createInviteCode failed:", err);
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleCopyInvite(code: string) {
+    const url = `${window.location.origin}/register?invite=${code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("success", "Посилання-запрошення скопійовано.");
+    } catch {
+      showToast("error", "Не вдалося скопіювати посилання.");
+    }
   }
 
   return (
@@ -780,6 +832,49 @@ export default function ProfileView({
                 </div>
                 <p className="mt-3 text-[11.5px] leading-relaxed text-ink-tertiary">
                   Заповнений профіль отримує більше уваги в Match-блоці та Feed.
+                </p>
+              </div>
+            ) : null}
+
+            {viewerIsOwner ? (
+              <div className="glass rounded-2xl border border-border-subtle p-6">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
+                    Запросити в ANEXA
+                  </span>
+                  <UserPlus size={14} className="text-purple-soft" />
+                </div>
+
+                {pendingInvite ? (
+                  <div className="mt-3 flex items-center justify-between gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2">
+                    <span className="truncate font-mono text-[13px] tracking-wide text-ink-primary">
+                      {pendingInvite.code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyInvite(pendingInvite.code)}
+                      className="flex shrink-0 items-center gap-1.5 text-[11.5px] font-medium text-purple-soft transition-colors hover:text-purple"
+                    >
+                      <Copy size={12} />
+                      Копіювати
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleCreateInvite}
+                    disabled={creatingInvite}
+                    className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-2.5 text-[12.5px] text-ink-secondary transition-colors hover:bg-white/[0.04] disabled:opacity-60"
+                  >
+                    {creatingInvite ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                    Створити посилання-запрошення
+                  </button>
+                )}
+
+                <p className="mt-3 text-[11.5px] leading-relaxed text-ink-tertiary">
+                  {joinedInvites.length > 0
+                    ? `${formatJoinCount(joinedInvites.length)} за вашими запрошеннями · +${joinedInvites.length * 25} AX`
+                    : "За кожного, хто приєднається за вашим посиланням — +25 AX."}
                 </p>
               </div>
             ) : null}

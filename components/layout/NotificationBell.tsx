@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, Heart, Loader2, MessageCircle, Star, UserPlus } from "lucide-react";
+import { Bell, Check, Heart, Loader2, MessageCircle, Star, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   describeNotification,
@@ -23,6 +23,7 @@ const TYPE_ICON: Record<NotificationType, { Icon: typeof Bell; className: string
   connection_accepted: { Icon: Check, className: "bg-success/10 text-success" },
   message: { Icon: MessageCircle, className: "bg-blue/10 text-blue" },
   review: { Icon: Star, className: "bg-gold/10 text-gold" },
+  referral_joined: { Icon: Users, className: "bg-purple/10 text-purple-soft" },
 };
 
 /** Live "who's online"-style bell: seeds from the server-rendered unread
