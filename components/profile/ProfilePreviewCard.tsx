@@ -80,7 +80,7 @@ export default function ProfilePreviewCard({
 
       {open ? (
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:px-4"
           onClick={() => setOpen(false)}
           role="presentation"
         >
