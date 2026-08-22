@@ -9,14 +9,15 @@ import Avatar from "@/components/ui/Avatar";
 export default function LivestreamPanel({
   userId,
   communityId,
-  isOwner,
+  canHost,
   active,
   onActiveChange,
   initialPast,
 }: {
   userId: string;
   communityId: string;
-  isOwner: boolean;
+  /** Owner or Admin — matches community_livestreams' insert RLS. */
+  canHost: boolean;
   /** Lifted to the community page so the Feed tab's live banner and this
    * tab always agree on whether a stream is running. */
   active: Livestream | null;
@@ -104,7 +105,7 @@ export default function LivestreamPanel({
           <Video size={22} className="mx-auto text-ink-tertiary" />
           <p className="mt-2 text-[13px] text-ink-tertiary">Зараз немає прямих ефірів.</p>
 
-          {isOwner ? (
+          {canHost ? (
             <form onSubmit={handleStart} className="mx-auto mt-4 flex max-w-sm items-center gap-2">
               <input
                 type="text"

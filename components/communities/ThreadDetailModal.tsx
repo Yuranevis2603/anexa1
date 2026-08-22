@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Pin, PinOff, Send, X } from "lucide-react";
+import { Loader2, Pin, PinOff, Send, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { addReply, getReplies, setThreadPinned, type DiscussionReply, type DiscussionThread } from "@/lib/discussions";
+import {
+  addReply,
+  deleteReply,
+  deleteThread,
+  getReplies,
+  setThreadPinned,
+  type DiscussionReply,
+  type DiscussionThread,
+} from "@/lib/discussions";
 import { useToast } from "@/components/ui/ToastProvider";
 import ModalPortal from "@/components/ui/ModalPortal";
 import Avatar from "@/components/ui/Avatar";
@@ -22,21 +30,29 @@ function timeAgo(iso: string): string {
 export default function ThreadDetailModal({
   userId,
   thread,
-  canPin,
+  canModerate,
   onClose,
   onPinnedChange,
+  onThreadDeleted,
 }: {
   userId: string;
   thread: DiscussionThread;
-  canPin: boolean;
+  /** Community Admin/Moderator — combined with thread.userId === userId
+   * (the RLS-matching "author OR staff" rule) to decide pin/delete access. */
+  canModerate: boolean;
   onClose: () => void;
   onPinnedChange: (threadId: string, pinned: boolean) => void;
+  onThreadDeleted: (threadId: string) => void;
 }) {
   const { showToast } = useToast();
   const [replies, setReplies] = useState<DiscussionReply[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [pinned, setPinned] = useState(thread.pinned);
   const [pinPending, setPinPending] = useState(false);
+  const [deletingThread, setDeletingThread] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+
+  const canManageThread = canModerate || thread.userId === userId;
 
   const [replyBody, setReplyBody] = useState("");
   const [posting, setPosting] = useState(false);
@@ -72,6 +88,33 @@ export default function ThreadDetailModal({
       console.error("setThreadPinned failed:", error);
     } finally {
       setPinPending(false);
+    }
+  }
+
+  async function handleDeleteThread() {
+    if (deletingThread) return;
+    setDeletingThread(true);
+    try {
+      const supabase = createClient();
+      await deleteThread(supabase, thread.id);
+      onThreadDeleted(thread.id);
+      onClose();
+    } catch (error) {
+      showToast("error", "Не вдалося видалити тему.");
+      console.error("deleteThread failed:", error);
+      setDeletingThread(false);
+      setConfirmingDelete(false);
+    }
+  }
+
+  async function handleDeleteReply(replyId: string) {
+    try {
+      const supabase = createClient();
+      await deleteReply(supabase, replyId);
+      setReplies((prev) => (prev ? prev.filter((r) => r.id !== replyId) : prev));
+    } catch (error) {
+      showToast("error", "Не вдалося видалити відповідь.");
+      console.error("deleteReply failed:", error);
     }
   }
 
@@ -126,7 +169,7 @@ export default function ThreadDetailModal({
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              {canPin ? (
+              {canManageThread ? (
                 <button
                   type="button"
                   onClick={handleTogglePin}
@@ -135,6 +178,16 @@ export default function ThreadDetailModal({
                   className="rounded-lg p-1.5 text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-ink-primary disabled:opacity-60"
                 >
                   {pinned ? <PinOff size={15} /> : <Pin size={15} />}
+                </button>
+              ) : null}
+              {canManageThread ? (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(true)}
+                  aria-label="Видалити тему"
+                  className="rounded-lg p-1.5 text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-danger"
+                >
+                  <Trash2 size={15} />
                 </button>
               ) : null}
               <button
@@ -147,6 +200,30 @@ export default function ThreadDetailModal({
               </button>
             </div>
           </div>
+
+          {confirmingDelete ? (
+            <div className="flex items-center justify-between gap-3 border-b border-danger/30 bg-danger/[0.06] px-5 py-3">
+              <p className="text-[12.5px] text-ink-secondary">Видалити цю тему разом з усіма відповідями?</p>
+              <div className="flex shrink-0 items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDelete(false)}
+                  className="rounded-md px-2.5 py-1 text-[12px] font-medium text-ink-secondary hover:bg-white/[0.06]"
+                >
+                  Скасувати
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteThread}
+                  disabled={deletingThread}
+                  className="flex items-center gap-1.5 rounded-md bg-danger px-2.5 py-1 text-[12px] font-medium text-white disabled:opacity-60"
+                >
+                  {deletingThread ? <Loader2 size={12} className="animate-spin" /> : null}
+                  Видалити
+                </button>
+              </div>
+            </div>
+          ) : null}
 
           <div className="flex-1 overflow-y-auto p-5">
             {thread.body ? (
@@ -169,9 +246,21 @@ export default function ThreadDetailModal({
                       className="relative flex h-7 w-7 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[10.5px] font-semibold text-white"
                     />
                     <div className="min-w-0 flex-1 rounded-xl bg-base-surface px-3 py-2">
-                      <div className="flex items-center gap-2">
-                        <span className="truncate text-[12.5px] font-medium text-ink-primary">{reply.authorName}</span>
-                        <p className="shrink-0 text-[11px] text-ink-tertiary">{timeAgo(reply.createdAt)}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-[12.5px] font-medium text-ink-primary">{reply.authorName}</span>
+                          <p className="shrink-0 text-[11px] text-ink-tertiary">{timeAgo(reply.createdAt)}</p>
+                        </div>
+                        {reply.userId === userId || canModerate ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReply(reply.id)}
+                            aria-label="Видалити відповідь"
+                            className="shrink-0 text-ink-tertiary transition-colors hover:text-danger"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        ) : null}
                       </div>
                       <p className="mt-0.5 whitespace-pre-wrap text-[12.5px] leading-relaxed text-ink-secondary">
                         {reply.body}

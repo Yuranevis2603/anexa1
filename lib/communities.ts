@@ -179,6 +179,11 @@ export async function leaveCommunity(supabase: SupabaseClient, userId: string, c
   }
 }
 
+/** Community-level staff role — separate from `roleTitle` (the member's own
+ * job title, e.g. "CEO"). Owner isn't a value here; it's derived from
+ * Community.createdBy and exposed via `isOwner`. */
+export type CommunityRoleTier = "admin" | "moderator" | "member";
+
 export type CommunityMember = {
   userId: string;
   fullName: string;
@@ -186,6 +191,7 @@ export type CommunityMember = {
   roleTitle: string | null;
   company: string | null;
   isOwner: boolean;
+  communityRole: CommunityRoleTier;
   joinedAt: string;
 };
 
@@ -199,7 +205,9 @@ export async function getCommunityMembers(
 ): Promise<CommunityMember[]> {
   const { data, error } = await supabase
     .from("community_members")
-    .select("user_id, joined_at, profile:profiles!community_members_user_id_fkey(full_name, avatar_url, role_title, company)")
+    .select(
+      "user_id, joined_at, role, profile:profiles!community_members_user_id_fkey(full_name, avatar_url, role_title, company)"
+    )
     .eq("community_id", communityId)
     .order("joined_at", { ascending: true });
 
@@ -211,6 +219,7 @@ export async function getCommunityMembers(
   const rows = (data ?? []) as unknown as {
     user_id: string;
     joined_at: string;
+    role: CommunityRoleTier;
     profile: { full_name: string; avatar_url: string | null; role_title: string | null; company: string | null } | null;
   }[];
 
@@ -221,11 +230,45 @@ export async function getCommunityMembers(
     roleTitle: r.profile?.role_title ?? null,
     company: r.profile?.company ?? null,
     isOwner: r.user_id === ownerId,
+    communityRole: r.role,
     joinedAt: r.joined_at,
   }));
 
   members.sort((a, b) => (a.isOwner === b.isOwner ? 0 : a.isOwner ? -1 : 1));
   return members;
+}
+
+/** Owner-only — RLS (community_members_update_role_owner) enforces it. */
+export async function setMemberRole(
+  supabase: SupabaseClient,
+  communityId: string,
+  userId: string,
+  role: CommunityRoleTier
+): Promise<void> {
+  const { error } = await supabase
+    .from("community_members")
+    .update({ role })
+    .eq("community_id", communityId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Removes a member from the community. RLS restricts this to the owner
+ * (any member/admin) or an Admin (plain members only — not other admins,
+ * not the owner). */
+export async function kickMember(supabase: SupabaseClient, communityId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("community_members")
+    .delete()
+    .eq("community_id", communityId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 /** Total post count for the sidebar's "Постів" stat. */

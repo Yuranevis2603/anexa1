@@ -98,9 +98,17 @@ export async function createThread(
   return toThread(data as unknown as ThreadRow);
 }
 
-/** Pin/unpin — RLS restricts this to the thread's author or the community owner. */
+/** Pin/unpin — RLS restricts this to the thread's author or the community's Admin/Moderator staff. */
 export async function setThreadPinned(supabase: SupabaseClient, threadId: string, pinned: boolean): Promise<void> {
   const { error } = await supabase.from("discussion_threads").update({ pinned }).eq("id", threadId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** RLS restricts this to the thread's author or the community's Admin/Moderator staff. */
+export async function deleteThread(supabase: SupabaseClient, threadId: string): Promise<void> {
+  const { error } = await supabase.from("discussion_threads").delete().eq("id", threadId);
   if (error) {
     throw new Error(error.message);
   }
@@ -152,6 +160,14 @@ export async function addReply(
   body: string
 ): Promise<void> {
   const { error } = await supabase.from("discussion_replies").insert({ thread_id: threadId, user_id: userId, body });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** RLS restricts this to the reply's author or the community's Admin/Moderator staff. */
+export async function deleteReply(supabase: SupabaseClient, replyId: string): Promise<void> {
+  const { error } = await supabase.from("discussion_replies").delete().eq("id", replyId);
   if (error) {
     throw new Error(error.message);
   }

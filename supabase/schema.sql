@@ -199,6 +199,10 @@ create table if not exists public.community_members (
   community_id uuid not null references public.communities(id),
   user_id uuid not null references public.profiles(id),
   joined_at timestamptz not null default now(),
+  -- Owner identity stays on communities.created_by — this only marks staff
+  -- among the rest of the membership. See is_community_owner/admin/staff.
+  role text not null default 'member'
+    check (role in ('admin', 'moderator', 'member')),
   primary key (community_id, user_id)
 );
 
@@ -220,6 +224,48 @@ create policy "community_members_delete_own"
   on public.community_members for delete
   to public
   using (user_id = (select auth.uid()));
+
+create or replace function public.is_community_owner(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.communities c
+    where c.id = p_community_id and c.created_by = p_user_id
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_community_admin(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select public.is_community_owner(p_community_id, p_user_id) or exists (
+    select 1 from public.community_members cm
+    where cm.community_id = p_community_id and cm.user_id = p_user_id and cm.role = 'admin'
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_community_staff(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select public.is_community_admin(p_community_id, p_user_id) or exists (
+    select 1 from public.community_members cm
+    where cm.community_id = p_community_id and cm.user_id = p_user_id and cm.role = 'moderator'
+  );
+$$ language sql stable security definer set search_path = public;
+
+-- Owner-only: grant/revoke Admin or Moderator on any member row.
+create policy "community_members_update_role_owner"
+  on public.community_members for update
+  to public
+  using (public.is_community_owner(community_id, (select auth.uid())));
+
+-- Owner or Admin can remove a plain member; only the owner can remove an
+-- Admin; the owner's own row (identified via communities.created_by, not
+-- this table) can never be removed this way.
+create policy "community_members_delete_staff"
+  on public.community_members for delete
+  to public
+  using (
+    public.is_community_admin(community_id, (select auth.uid()))
+    and user_id <> (select created_by from public.communities c where c.id = community_members.community_id)
+    and (role <> 'admin' or public.is_community_owner(community_id, (select auth.uid())))
+  );
 
 -- ============================================================================
 -- events
@@ -303,9 +349,9 @@ create policy "event_registrations_delete_own"
 -- Daily.co (see app/api/daily/rooms/route.ts). Rooms are created public
 -- (no per-viewer meeting tokens), so `room_url` alone is enough to join —
 -- deliberately simple for a v1; no recording/replay, no scheduling queue.
--- Starting/ending one is restricted to the community's own creator, same
--- as event creation before roles/admin/moderator exist (deferred by the
--- user's own request — see docs/instructions.md module #7).
+-- Starting/ending one is restricted to the community's owner or an Admin
+-- (not Moderator — hosting is an operational role, not a content-moderation
+-- one).
 -- ============================================================================
 create table if not exists public.community_livestreams (
   id uuid primary key default gen_random_uuid(),
@@ -335,10 +381,7 @@ create policy "community_livestreams_insert_own_community"
   to public
   with check (
     host_id = (select auth.uid())
-    and exists (
-      select 1 from public.communities c
-      where c.id = community_id and c.created_by = (select auth.uid())
-    )
+    and public.is_community_admin(community_id, (select auth.uid()))
   );
 
 create policy "community_livestreams_update_own"
@@ -386,17 +429,14 @@ create policy "discussion_threads_insert_member"
     )
   );
 
--- Author can edit their own thread; the community owner can additionally
--- pin/unpin any thread (no separate admin/moderator role exists yet).
+-- Author can edit their own thread; Admin/Moderator can additionally
+-- pin/unpin or remove any thread in their community.
 create policy "discussion_threads_update"
   on public.discussion_threads for update
   to public
   using (
     user_id = (select auth.uid())
-    or exists (
-      select 1 from public.communities c
-      where c.id = discussion_threads.community_id and c.created_by = (select auth.uid())
-    )
+    or public.is_community_staff(community_id, (select auth.uid()))
   );
 
 create policy "discussion_threads_delete"
@@ -404,10 +444,7 @@ create policy "discussion_threads_delete"
   to public
   using (
     user_id = (select auth.uid())
-    or exists (
-      select 1 from public.communities c
-      where c.id = discussion_threads.community_id and c.created_by = (select auth.uid())
-    )
+    or public.is_community_staff(community_id, (select auth.uid()))
   );
 
 create table if not exists public.discussion_replies (
@@ -443,6 +480,17 @@ create policy "discussion_replies_delete_own"
   on public.discussion_replies for delete
   to public
   using (user_id = (select auth.uid()));
+
+create policy "discussion_replies_delete_staff"
+  on public.discussion_replies for delete
+  to public
+  using (
+    exists (
+      select 1 from public.discussion_threads dt
+      where dt.id = discussion_replies.thread_id
+      and public.is_community_staff(dt.community_id, (select auth.uid()))
+    )
+  );
 
 create or replace function public.sync_discussion_reply_count()
 returns trigger as $$
@@ -612,6 +660,12 @@ create policy "activity_delete_own"
   on public.activity_items for delete
   to public
   using (user_id = (select auth.uid()));
+
+-- Admin/Moderator can remove any community post, not just their own.
+create policy "activity_delete_staff"
+  on public.activity_items for delete
+  to public
+  using (community_id is not null and public.is_community_staff(community_id, (select auth.uid())));
 
 -- ============================================================================
 -- activity_likes

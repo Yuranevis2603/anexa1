@@ -52,6 +52,7 @@ export default function PostCard({
   onDeleted,
   onUnsaved,
   autoOpenComments,
+  canModerate,
 }: {
   item: FeedItem;
   userId: string;
@@ -62,11 +63,15 @@ export default function PostCard({
   /** Opens (and loads) the comments section on mount — used by the post
    * permalink page when arriving from a comment notification. */
   autoOpenComments?: boolean;
+  /** Community Admin/Moderator viewing someone else's post — lets them
+   * delete it too (RLS backs this; the prop only controls menu visibility). */
+  canModerate?: boolean;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
   const name = item.author?.full_name ?? "Учасник ANEXA";
   const isOwn = item.user_id === userId;
+  const canDelete = isOwn || Boolean(canModerate);
   const typeMeta = postTypeMeta(item.post_type);
   const cta = ctaLabel(item.cta_type);
   const workFormat = workFormatLabel(item.work_format);
@@ -324,7 +329,7 @@ export default function PostCard({
             </span>
           ) : null}
 
-          {isOwn ? (
+          {canDelete ? (
             <div className="relative">
               <button
                 type="button"
@@ -345,7 +350,7 @@ export default function PostCard({
                     className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12.5px] text-danger transition-colors hover:bg-white/[0.05]"
                   >
                     <Trash2 size={13} />
-                    Видалити пост
+                    {isOwn ? "Видалити пост" : "Видалити (модерація)"}
                   </button>
                 </div>
               ) : null}
