@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, X } from "lucide-react";
+import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Calendar, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -17,6 +17,7 @@ function buildPrimaryNav(unreadMessages: number, pendingConnections: number, unr
     { label: "Головна", href: "/dashboard", icon: Home },
     { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
     { label: "Спільноти", href: "/dashboard/communities", icon: Users },
+    { label: "Події", href: "/dashboard/events", icon: Calendar },
     {
       label: "Друзі",
       href: "/dashboard/friends",

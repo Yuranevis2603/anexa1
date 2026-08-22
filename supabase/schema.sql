@@ -214,14 +214,16 @@ create policy "community_members_delete_own"
 
 -- ============================================================================
 -- events
--- Community events. No insert/update/delete policy exists yet — rows are
--- managed outside the client API (service role / dashboard).
+-- Community events. Any member can create one (unlike communities, not
+-- capped at one per creator — an organizer routinely runs several).
 -- ============================================================================
 create table if not exists public.events (
   id uuid primary key default gen_random_uuid(),
   title text not null,
+  description text,
   location text,
   event_date timestamptz not null,
+  created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
 
@@ -231,6 +233,21 @@ create policy "events_select_all"
   on public.events for select
   to authenticated
   using (true);
+
+create policy "events_insert_own"
+  on public.events for insert
+  to public
+  with check (created_by = (select auth.uid()));
+
+create policy "events_update_own"
+  on public.events for update
+  to public
+  using (created_by = (select auth.uid()));
+
+create policy "events_delete_own"
+  on public.events for delete
+  to public
+  using (created_by = (select auth.uid()));
 
 -- ============================================================================
 -- event_registrations
