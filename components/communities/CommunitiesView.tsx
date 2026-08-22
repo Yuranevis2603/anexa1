@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import type { Community } from "@/lib/communities";
 import CommunityCard from "./CommunityCard";
+import CreateCommunityModal from "./CreateCommunityModal";
 
 export default function CommunitiesView({
   userId,
@@ -16,6 +17,7 @@ export default function CommunitiesView({
   useEffect(() => setCommunities(initialCommunities), [initialCommunities]);
 
   const [query, setQuery] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
 
   const filtered = useMemo(() => {
     const term = query.trim().toLowerCase();
@@ -24,6 +26,7 @@ export default function CommunitiesView({
   }, [communities, query]);
 
   const myCount = communities.filter((c) => c.isMember).length;
+  const hasOwnCommunity = communities.some((c) => c.createdBy === userId);
 
   function handleChanged(communityId: string, isMember: boolean) {
     setCommunities((prev) =>
@@ -33,6 +36,11 @@ export default function CommunitiesView({
           : c
       )
     );
+  }
+
+  function handleCreated(community: Community) {
+    setCommunities((prev) => [...prev, community].sort((a, b) => a.name.localeCompare(b.name)));
+    setCreateOpen(false);
   }
 
   return (
@@ -45,15 +53,28 @@ export default function CommunitiesView({
           </p>
         </div>
 
-        <div className="flex w-full min-w-0 max-w-[260px] items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 sm:w-64">
-          <Search size={15} className="shrink-0 text-ink-tertiary" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Пошук спільнот..."
-            className="w-full min-w-0 bg-transparent text-[13px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
-          />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full min-w-0 max-w-[260px] items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 sm:w-64">
+            <Search size={15} className="shrink-0 text-ink-tertiary" />
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Пошук спільнот..."
+              className="w-full min-w-0 bg-transparent text-[13px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            disabled={hasOwnCommunity}
+            title={hasOwnCommunity ? "Ви вже створили спільноту" : undefined}
+            className="flex items-center gap-1.5 rounded-lg bg-grad-purple-blue px-3.5 py-2 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 disabled:shadow-none"
+          >
+            <Plus size={14} />
+            Створити спільноту
+          </button>
         </div>
       </div>
 
@@ -72,6 +93,10 @@ export default function CommunitiesView({
           </div>
         )}
       </div>
+
+      {createOpen ? (
+        <CreateCommunityModal userId={userId} onClose={() => setCreateOpen(false)} onCreated={handleCreated} />
+      ) : null}
     </div>
   );
 }

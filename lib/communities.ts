@@ -4,6 +4,7 @@ export type Community = {
   id: string;
   name: string;
   iconUrl: string | null;
+  createdBy: string | null;
   memberCount: number;
   isMember: boolean;
 };
@@ -14,7 +15,7 @@ export type Community = {
  * needed at this scale. */
 export async function getCommunities(supabase: SupabaseClient, userId: string): Promise<Community[]> {
   const [{ data: communities, error: communitiesError }, { data: members, error: membersError }] = await Promise.all([
-    supabase.from("communities").select("id, name, icon_url").order("name"),
+    supabase.from("communities").select("id, name, icon_url, created_by").order("name"),
     supabase.from("community_members").select("community_id, user_id"),
   ]);
 
@@ -34,13 +35,52 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
     if (row.user_id === userId) mine.add(row.community_id);
   }
 
-  return ((communities ?? []) as { id: string; name: string; icon_url: string | null }[]).map((c) => ({
+  return (
+    (communities ?? []) as { id: string; name: string; icon_url: string | null; created_by: string | null }[]
+  ).map((c) => ({
     id: c.id,
     name: c.name,
     iconUrl: c.icon_url,
+    createdBy: c.created_by,
     memberCount: counts.get(c.id) ?? 0,
     isMember: mine.has(c.id),
   }));
+}
+
+/** Creates a community owned by `userId` (the created_by unique index caps
+ * this at one per creator — a second attempt fails with a 23505) and joins
+ * its creator to it right away. */
+export async function createCommunity(
+  supabase: SupabaseClient,
+  userId: string,
+  name: string,
+  iconUrl: string | null
+): Promise<Community> {
+  const { data, error } = await supabase
+    .from("communities")
+    .insert({ name, icon_url: iconUrl, created_by: userId })
+    .select("id, name, icon_url, created_by")
+    .single();
+
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("Ви вже створили спільноту — можна мати лише одну.");
+    }
+    throw new Error(error.message);
+  }
+
+  const community = data as { id: string; name: string; icon_url: string | null; created_by: string | null };
+
+  await joinCommunity(supabase, userId, community.id);
+
+  return {
+    id: community.id,
+    name: community.name,
+    iconUrl: community.icon_url,
+    createdBy: community.created_by,
+    memberCount: 1,
+    isMember: true,
+  };
 }
 
 export async function joinCommunity(supabase: SupabaseClient, userId: string, communityId: string): Promise<void> {

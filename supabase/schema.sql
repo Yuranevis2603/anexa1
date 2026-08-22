@@ -156,15 +156,19 @@ create policy "projects_delete_own"
 
 -- ============================================================================
 -- communities
--- Sub-communities members can join. No insert/update/delete policy exists yet
--- — rows are managed outside the client API (service role / dashboard).
+-- Sub-communities members can join. Any member can create one — the unique
+-- index on created_by caps it at one community per creator, enforced at the
+-- database level rather than just in the client.
 -- ============================================================================
 create table if not exists public.communities (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   icon_url text,
+  created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
+
+create unique index if not exists idx_communities_created_by_unique on public.communities (created_by);
 
 alter table public.communities enable row level security;
 
@@ -172,6 +176,11 @@ create policy "communities_select_all"
   on public.communities for select
   to authenticated
   using (true);
+
+create policy "communities_insert_own"
+  on public.communities for insert
+  to public
+  with check (created_by = (select auth.uid()));
 
 -- ============================================================================
 -- community_members
