@@ -47,6 +47,40 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
   }));
 }
 
+/** One community by id, with the same member count/membership shape as
+ * getCommunities — for the community detail page header. Null if the
+ * community doesn't exist. */
+export async function getCommunity(
+  supabase: SupabaseClient,
+  communityId: string,
+  userId: string
+): Promise<Community | null> {
+  const [{ data: community, error: communityError }, { data: members, error: membersError }] = await Promise.all([
+    supabase.from("communities").select("id, name, icon_url, created_by").eq("id", communityId).maybeSingle(),
+    supabase.from("community_members").select("user_id").eq("community_id", communityId),
+  ]);
+
+  if (communityError || !community) {
+    if (communityError) console.error("getCommunity failed:", communityError.message);
+    return null;
+  }
+  if (membersError) {
+    console.error("getCommunity (members) failed:", membersError.message);
+  }
+
+  const rows = (members ?? []) as { user_id: string }[];
+  const c = community as { id: string; name: string; icon_url: string | null; created_by: string | null };
+
+  return {
+    id: c.id,
+    name: c.name,
+    iconUrl: c.icon_url,
+    createdBy: c.created_by,
+    memberCount: rows.length,
+    isMember: rows.some((r) => r.user_id === userId),
+  };
+}
+
 /** Creates a community owned by `userId` (the created_by unique index caps
  * this at one per creator — a second attempt fails with a 23505) and joins
  * its creator to it right away. */

@@ -9,9 +9,17 @@ import CreateEventModal from "./CreateEventModal";
 export default function EventsView({
   userId,
   initialEvents,
+  communityId,
+  showTitle = true,
 }: {
   userId: string;
   initialEvents: EventItem[];
+  /** Scopes "Створити подію" to this community. Pass the community's own
+   * event list as initialEvents (already filtered server-side). */
+  communityId?: string;
+  /** Community pages provide their own "Події" heading — set false there
+   * to avoid a duplicate. */
+  showTitle?: boolean;
 }) {
   const [events, setEvents] = useState(initialEvents);
   useEffect(() => setEvents(initialEvents), [initialEvents]);
@@ -49,7 +57,7 @@ export default function EventsView({
     <div>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h1 className="font-display text-xl font-semibold text-ink-primary">Події</h1>
+          {showTitle ? <h1 className="font-display text-xl font-semibold text-ink-primary">Події</h1> : null}
           <p className="mt-1 text-[12.5px] text-ink-tertiary">
             {upcoming.length} найближчих, ви йдете на {myUpcomingCount}
           </p>
@@ -92,7 +100,12 @@ export default function EventsView({
       ) : null}
 
       {createOpen ? (
-        <CreateEventModal userId={userId} onClose={() => setCreateOpen(false)} onCreated={handleCreated} />
+        <CreateEventModal
+          userId={userId}
+          communityId={communityId}
+          onClose={() => setCreateOpen(false)}
+          onCreated={handleCreated}
+        />
       ) : null}
     </div>
   );

@@ -8,10 +8,12 @@ import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function CreateEventModal({
   userId,
+  communityId,
   onClose,
   onCreated,
 }: {
   userId: string;
+  communityId?: string;
   onClose: () => void;
   onCreated: (event: EventItem) => void;
 }) {
@@ -43,6 +45,7 @@ export default function CreateEventModal({
         description: description.trim() || null,
         location: location.trim() || null,
         eventDate: new Date(dateValue).toISOString(),
+        communityId,
       });
       onCreated(event);
     } catch (err) {

@@ -7,20 +7,40 @@ export type EventItem = {
   location: string | null;
   eventDate: string;
   createdBy: string | null;
+  communityId: string | null;
   attendeeCount: number;
   isRegistered: boolean;
 };
 
-/** All events with an attendee count and whether `userId` is registered.
- * Both tables are select-all for authenticated members (see schema.sql),
- * so this is two plain reads plus a client-side aggregation — same
- * approach as getCommunities. */
-export async function getEvents(supabase: SupabaseClient, userId: string): Promise<EventItem[]> {
+type EventRow = {
+  id: string;
+  title: string;
+  description: string | null;
+  location: string | null;
+  event_date: string;
+  created_by: string | null;
+  community_id: string | null;
+};
+
+/** All events (optionally scoped to one community) with an attendee count
+ * and whether `userId` is registered. Both tables are select-all for
+ * authenticated members (see schema.sql), so this is two plain reads plus
+ * a client-side aggregation — same approach as getCommunities. */
+export async function getEvents(
+  supabase: SupabaseClient,
+  userId: string,
+  communityId?: string
+): Promise<EventItem[]> {
+  let query = supabase
+    .from("events")
+    .select("id, title, description, location, event_date, created_by, community_id")
+    .order("event_date", { ascending: true });
+  if (communityId) {
+    query = query.eq("community_id", communityId);
+  }
+
   const [{ data: events, error: eventsError }, { data: regs, error: regsError }] = await Promise.all([
-    supabase
-      .from("events")
-      .select("id, title, description, location, event_date, created_by")
-      .order("event_date", { ascending: true }),
+    query,
     supabase.from("event_registrations").select("event_id, user_id").neq("status", "cancelled"),
   ]);
 
@@ -40,32 +60,25 @@ export async function getEvents(supabase: SupabaseClient, userId: string): Promi
     if (row.user_id === userId) mine.add(row.event_id);
   }
 
-  return (
-    (events ?? []) as {
-      id: string;
-      title: string;
-      description: string | null;
-      location: string | null;
-      event_date: string;
-      created_by: string | null;
-    }[]
-  ).map((e) => ({
+  return ((events ?? []) as EventRow[]).map((e) => ({
     id: e.id,
     title: e.title,
     description: e.description,
     location: e.location,
     eventDate: e.event_date,
     createdBy: e.created_by,
+    communityId: e.community_id,
     attendeeCount: counts.get(e.id) ?? 0,
     isRegistered: mine.has(e.id),
   }));
 }
 
-/** Creates an event owned by `userId` and registers its creator right away. */
+/** Creates an event owned by `userId` (optionally scoped to a community)
+ * and registers its creator right away. */
 export async function createEvent(
   supabase: SupabaseClient,
   userId: string,
-  fields: { title: string; description: string | null; location: string | null; eventDate: string }
+  fields: { title: string; description: string | null; location: string | null; eventDate: string; communityId?: string | null }
 ): Promise<EventItem> {
   const { data, error } = await supabase
     .from("events")
@@ -75,22 +88,16 @@ export async function createEvent(
       location: fields.location,
       event_date: fields.eventDate,
       created_by: userId,
+      community_id: fields.communityId ?? null,
     })
-    .select("id, title, description, location, event_date, created_by")
+    .select("id, title, description, location, event_date, created_by, community_id")
     .single();
 
   if (error) {
     throw new Error(error.message);
   }
 
-  const event = data as {
-    id: string;
-    title: string;
-    description: string | null;
-    location: string | null;
-    event_date: string;
-    created_by: string | null;
-  };
+  const event = data as EventRow;
 
   await registerForEvent(supabase, userId, event.id);
 
@@ -101,6 +108,7 @@ export async function createEvent(
     location: event.location,
     eventDate: event.event_date,
     createdBy: event.created_by,
+    communityId: event.community_id,
     attendeeCount: 1,
     isRegistered: true,
   };

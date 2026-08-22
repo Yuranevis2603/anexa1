@@ -224,8 +224,11 @@ create table if not exists public.events (
   location text,
   event_date timestamptz not null,
   created_by uuid references public.profiles(id),
+  community_id uuid references public.communities(id),
   created_at timestamptz not null default now()
 );
+
+create index if not exists idx_events_community_id on public.events (community_id);
 
 alter table public.events enable row level security;
 

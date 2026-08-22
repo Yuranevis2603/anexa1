@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Check, Loader2, UserPlus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { type Community, formatMemberCount, joinCommunity, leaveCommunity } from "@/lib/communities";
@@ -41,14 +42,16 @@ export default function CommunityCard({
 
   return (
     <div className="glass flex flex-col items-center rounded-2xl border border-border-subtle p-5 text-center">
-      <Avatar
-        src={community.iconUrl}
-        name={community.name}
-        size={56}
-        className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[16px] font-semibold text-white"
-      />
+      <Link href={`/dashboard/communities/${community.id}`} className="flex flex-col items-center">
+        <Avatar
+          src={community.iconUrl}
+          name={community.name}
+          size={56}
+          className="relative flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[16px] font-semibold text-white"
+        />
 
-      <p className="mt-3 text-[13.5px] font-medium text-ink-primary">{community.name}</p>
+        <p className="mt-3 text-[13.5px] font-medium text-ink-primary hover:underline">{community.name}</p>
+      </Link>
       <p className="mt-0.5 text-[12px] text-ink-tertiary">{formatMemberCount(community.memberCount)}</p>
 
       <button
