@@ -2,6 +2,7 @@
 
 import { Star, Trophy, X, Zap } from "lucide-react";
 import type { Level } from "@/lib/gamification";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 const AX_SOURCES: { label: string; amount: string; cap: string }[] = [
   { label: "Профіль заповнено на 100%", amount: "+100", cap: "один раз" },
@@ -16,6 +17,7 @@ const AX_SOURCES: { label: string; amount: string; cap: string }[] = [
 
 export default function GamificationInfoModal({ levels, onClose }: { levels: Level[]; onClose: () => void }) {
   return (
+    <ModalPortal>
     <div
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
       onClick={onClose}
@@ -99,5 +101,6 @@ export default function GamificationInfoModal({ levels, onClose }: { levels: Lev
         </section>
       </div>
     </div>
+    </ModalPortal>
   );
 }

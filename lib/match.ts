@@ -78,3 +78,46 @@ export async function getTopMatch(
 
   return best;
 }
+
+/**
+ * Multiple potential-match candidates for the Friends page "Рекомендації"
+ * tab — same overlap scoring as getTopMatch, but returns up to `limit`
+ * candidates and excludes anyone `me` already has a connection with
+ * (accepted or pending, either direction).
+ */
+export async function getMatchRecommendations(
+  supabase: SupabaseClient,
+  me: Pick<Profile, "id" | "skills" | "interests" | "business_goals">,
+  limit: number
+): Promise<MatchCandidate[]> {
+  const { data: connections } = await supabase
+    .from("connections")
+    .select("requester_id, addressee_id")
+    .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`);
+
+  const excluded = new Set<string>([me.id]);
+  for (const c of (connections ?? []) as { requester_id: string; addressee_id: string }[]) {
+    excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
+    .neq("id", me.id)
+    .limit(200);
+
+  if (error || !data) {
+    if (error) console.error("getMatchRecommendations failed:", error.message);
+    return [];
+  }
+
+  const candidates: MatchCandidate[] = [];
+  for (const other of data as (MatchProfile & { business_goals: string[] })[]) {
+    if (excluded.has(other.id)) continue;
+    const { score, overlappingTags } = computeMatchScore(me, other);
+    candidates.push({ profile: other, score, overlappingTags });
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates.slice(0, limit);
+}

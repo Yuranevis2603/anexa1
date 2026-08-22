@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -50,6 +50,7 @@ export default function PostCard({
   initiallySaved,
   onDeleted,
   onUnsaved,
+  autoOpenComments,
 }: {
   item: FeedItem;
   userId: string;
@@ -57,6 +58,9 @@ export default function PostCard({
   initiallySaved: boolean;
   onDeleted: (id: string) => void;
   onUnsaved?: (id: string) => void;
+  /** Opens (and loads) the comments section on mount — used by the post
+   * permalink page when arriving from a comment notification. */
+  autoOpenComments?: boolean;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -74,10 +78,17 @@ export default function PostCard({
   const [saved, setSaved] = useState(initiallySaved);
   const [savePending, setSavePending] = useState(false);
 
-  const [commentsOpen, setCommentsOpen] = useState(false);
+  const [commentsOpen, setCommentsOpen] = useState(Boolean(autoOpenComments));
   const [comments, setComments] = useState<FeedComment[] | null>(null);
   const [commentsLoading, setCommentsLoading] = useState(false);
   const [commentCount, setCommentCount] = useState(item.comment_count);
+
+  useEffect(() => {
+    if (autoOpenComments) {
+      loadComments();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const [commentBody, setCommentBody] = useState("");
   const [commentPosting, setCommentPosting] = useState(false);

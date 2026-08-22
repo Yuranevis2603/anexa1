@@ -171,6 +171,75 @@ export async function getViewerRelation(
   return { following: row.following, blocked: row.blocked, reviewed: row.reviewed, connection };
 }
 
+export type FriendListItem = {
+  connectionId: string;
+  friendId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  roleTitle: string | null;
+  company: string | null;
+  tags: string[];
+  mutualCount: number;
+};
+
+type FriendRow = {
+  connection_id: string;
+  friend_id: string;
+  full_name: string;
+  avatar_url: string | null;
+  role_title: string | null;
+  company: string | null;
+  skills: string[] | null;
+  interests: string[] | null;
+  industries: string[] | null;
+  mutual_count: number;
+};
+
+/** Accepted connections for `userId`, each with a mutual-friends count.
+ * Backed by the get_friends_with_mutual_count RPC — mutual counts need to
+ * see *other* people's connections rows, which client-side RLS otherwise
+ * hides from anyone but the two parties on a row. */
+export async function getFriends(supabase: SupabaseClient, userId: string): Promise<FriendListItem[]> {
+  const { data, error } = await supabase.rpc("get_friends_with_mutual_count", { p_user_id: userId });
+
+  if (error) {
+    console.error("getFriends failed:", error.message);
+    return [];
+  }
+
+  return ((data ?? []) as FriendRow[]).map((row) => ({
+    connectionId: row.connection_id,
+    friendId: row.friend_id,
+    fullName: row.full_name,
+    avatarUrl: row.avatar_url,
+    roleTitle: row.role_title,
+    company: row.company,
+    tags: [...(row.skills ?? []), ...(row.interests ?? []), ...(row.industries ?? [])].filter(Boolean).slice(0, 3),
+    mutualCount: row.mutual_count,
+  }));
+}
+
+/** Ukrainian pluralization for the "X спільних друзів" card line. */
+export function formatMutualFriends(count: number): string {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  const word =
+    mod10 === 1 && mod100 !== 11
+      ? "спільний друг"
+      : mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)
+        ? "спільні друзі"
+        : "спільних друзів";
+  return `${count} ${word}`;
+}
+
+/** Ends an accepted friendship — either party may do this. */
+export async function removeFriend(supabase: SupabaseClient, connectionId: string): Promise<void> {
+  const { error } = await supabase.from("connections").delete().eq("id", connectionId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 export async function acceptConnection(supabase: SupabaseClient, connectionId: string): Promise<void> {
   const { error } = await supabase.from("connections").update({ status: "accepted" }).eq("id", connectionId);
   if (error) {

@@ -5,6 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { createProject, type ProjectStatus } from "@/lib/projects";
 import { useToast } from "@/components/ui/ToastProvider";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 export default function CreateProjectModal({
   userId,
@@ -54,6 +55,7 @@ export default function CreateProjectModal({
   }
 
   return (
+    <ModalPortal>
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4">
       <div className="glass max-h-[90vh] w-full max-w-md overflow-y-auto rounded-t-2xl border border-border-subtle bg-base-card p-6 sm:rounded-2xl">
         <div className="mb-5 flex items-center justify-between">
@@ -152,5 +154,6 @@ export default function CreateProjectModal({
         </form>
       </div>
     </div>
+    </ModalPortal>
   );
 }

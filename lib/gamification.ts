@@ -123,6 +123,53 @@ export async function getMyReviewOf(
   return Boolean(data);
 }
 
+export type Review = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  createdAt: string;
+  reviewerId: string;
+  reviewerName: string;
+  reviewerAvatarUrl: string | null;
+};
+
+type ReviewRow = {
+  id: string;
+  rating: number;
+  comment: string | null;
+  created_at: string;
+  reviewer_id: string;
+  reviewer: { full_name: string; avatar_url: string | null } | null;
+};
+
+const REVIEW_SELECT =
+  "id, rating, comment, created_at, reviewer_id, reviewer:profiles!reviews_reviewer_id_fkey(full_name, avatar_url)";
+
+/** Reviews received by `revieweeId`, newest first — reviews are a public
+ * trust signal (select-all RLS), so this is fine to show to any viewer. */
+export async function getReviews(supabase: SupabaseClient, revieweeId: string): Promise<Review[]> {
+  const { data, error } = await supabase
+    .from("reviews")
+    .select(REVIEW_SELECT)
+    .eq("reviewee_id", revieweeId)
+    .order("created_at", { ascending: false });
+
+  if (error) {
+    console.error("getReviews failed:", error.message);
+    return [];
+  }
+
+  return ((data ?? []) as unknown as ReviewRow[]).map((row) => ({
+    id: row.id,
+    rating: row.rating,
+    comment: row.comment,
+    createdAt: row.created_at,
+    reviewerId: row.reviewer_id,
+    reviewerName: row.reviewer?.full_name ?? "Учасник ANEXA",
+    reviewerAvatarUrl: row.reviewer?.avatar_url ?? null,
+  }));
+}
+
 export async function submitReview(
   supabase: SupabaseClient,
   reviewerId: string,

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { getProfile, type Profile } from "@/lib/profile";
 import { getProfileStats, type ProfileStats } from "@/lib/gamification";
 import Avatar from "@/components/ui/Avatar";
+import ModalPortal from "@/components/ui/ModalPortal";
 
 /**
  * Wraps a name/avatar so clicking it opens a small preview card instead of
@@ -79,8 +80,9 @@ export default function ProfilePreviewCard({
       </span>
 
       {open ? (
+        <ModalPortal>
         <div
-          className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4"
+          className="fixed inset-0 z-50 flex items-end justify-center bg-black/85 sm:items-center sm:px-4"
           onClick={() => setOpen(false)}
           role="presentation"
         >
@@ -158,6 +160,7 @@ export default function ProfilePreviewCard({
             )}
           </div>
         </div>
+        </ModalPortal>
       ) : null}
     </>
   );
