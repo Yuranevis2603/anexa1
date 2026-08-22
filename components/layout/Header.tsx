@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { Search, ChevronDown, Menu } from "lucide-react";
+import { ChevronDown, Menu } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import NotificationBell from "./NotificationBell";
+import GlobalSearch from "./GlobalSearch";
 
 export default function Header({
   userId,
@@ -32,14 +33,7 @@ export default function Header({
           <Menu size={19} />
         </button>
 
-        <div className="flex w-full max-w-md items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2">
-          <Search size={16} className="shrink-0 text-ink-tertiary" />
-          <input
-            type="text"
-            placeholder="Пошук людей, подій, проєктів..."
-            className="w-full min-w-0 bg-transparent text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
-          />
-        </div>
+        <GlobalSearch />
       </div>
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-4">
