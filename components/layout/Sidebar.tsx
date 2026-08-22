@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, X } from "lucide-react";
+import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -12,7 +12,7 @@ type NavItem = {
   badge?: number;
 };
 
-function buildPrimaryNav(unreadMessages: number, pendingConnections: number): NavItem[] {
+function buildPrimaryNav(unreadMessages: number, pendingConnections: number, unreadNotifications: number): NavItem[] {
   return [
     { label: "Головна", href: "/dashboard", icon: Home },
     { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
@@ -28,6 +28,12 @@ function buildPrimaryNav(unreadMessages: number, pendingConnections: number): Na
       href: "/dashboard/messages",
       icon: MessageCircle,
       badge: unreadMessages > 0 ? unreadMessages : undefined,
+    },
+    {
+      label: "Сповіщення",
+      href: "/dashboard/notifications",
+      icon: Bell,
+      badge: unreadNotifications > 0 ? unreadNotifications : undefined,
     },
     { label: "Профіль", href: "/dashboard/profile", icon: User },
     { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
@@ -71,14 +77,16 @@ export default function Sidebar({
   onClose,
   unreadMessages = 0,
   pendingConnections = 0,
+  unreadNotifications = 0,
 }: {
   open?: boolean;
   onClose?: () => void;
   unreadMessages?: number;
   pendingConnections?: number;
+  unreadNotifications?: number;
 }) {
   const activePath = usePathname();
-  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections);
+  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections, unreadNotifications);
 
   return (
     <aside

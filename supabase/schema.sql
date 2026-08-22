@@ -1092,6 +1092,119 @@ $$;
 grant execute on function public.get_friends_with_mutual_count(uuid) to authenticated;
 
 -- ============================================================================
+-- notifications
+-- One row per event a member should see in the notification center (bell +
+-- /dashboard/notifications). Written only by security-definer trigger
+-- functions below — there is no insert/delete policy, so the client can
+-- never forge or remove a notification, only read and mark its own read.
+-- ============================================================================
+create table if not exists public.notifications (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id),
+  actor_id uuid references public.profiles(id),
+  type text not null check (type in (
+    'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review'
+  )),
+  entity_type text,
+  entity_id uuid,
+  read_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_notifications_user_id_created_at on public.notifications (user_id, created_at desc);
+
+alter table public.notifications enable row level security;
+
+create policy "notifications_select_own"
+  on public.notifications for select
+  to public
+  using (user_id = (select auth.uid()));
+
+create policy "notifications_update_own"
+  on public.notifications for update
+  to public
+  using (user_id = (select auth.uid()));
+
+-- Shared writer for every notification-producing trigger below. Never
+-- notifies someone about their own action (e.g. liking your own post).
+create or replace function public.create_notification(
+  p_user_id uuid,
+  p_actor_id uuid,
+  p_type text,
+  p_entity_type text,
+  p_entity_id uuid
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_actor_id is not null and p_actor_id = p_user_id then
+    return;
+  end if;
+  insert into public.notifications (user_id, actor_id, type, entity_type, entity_id)
+  values (p_user_id, p_actor_id, p_type, p_entity_type, p_entity_id);
+end;
+$$;
+
+revoke execute on function public.create_notification(uuid, uuid, text, text, uuid) from public, anon, authenticated;
+
+-- Incoming "Познайомитися" request — the accepted side is already covered by
+-- award_connection_ax's notification below, this covers the initial ask.
+create or replace function public.notify_connection_request()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.status = 'pending' then
+    perform public.create_notification(new.addressee_id, new.requester_id, 'connection_request', 'connection', new.id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_connection_request on public.connections;
+create trigger trg_notify_connection_request
+  after insert on public.connections
+  for each row execute function public.notify_connection_request();
+
+revoke execute on function public.notify_connection_request() from public, anon, authenticated;
+
+-- New chat message — notifies every other participant in the conversation.
+create or replace function public.notify_new_message()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_participant record;
+begin
+  for v_participant in
+    select user_id from public.conversation_participants
+    where conversation_id = new.conversation_id and user_id <> new.sender_id
+  loop
+    perform public.create_notification(v_participant.user_id, new.sender_id, 'message', 'conversation', new.conversation_id);
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_new_message on public.messages;
+create trigger trg_notify_new_message
+  after insert on public.messages
+  for each row execute function public.notify_new_message();
+
+revoke execute on function public.notify_new_message() from public, anon, authenticated;
+
+-- Required for the bell's live unread-count subscription to receive
+-- anything at all — RLS alone doesn't put a table on the Realtime wire,
+-- it still has to be added to this publication (same gotcha hit earlier
+-- with messages/conversation_participants).
+alter publication supabase_realtime add table public.notifications;
+
+-- ============================================================================
 -- AX earning sources
 -- Every award goes through award_ax(), which logs to ax_events and enforces
 -- a rolling-24h cap per (user, source) so none of these can be farmed.
@@ -1162,6 +1275,7 @@ begin
   select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
   if v_post_owner is not null and v_post_owner <> new.user_id then
     perform public.award_ax(v_post_owner, 'like_received', 1, 20);
+    perform public.create_notification(v_post_owner, new.user_id, 'like', 'activity_item', new.activity_item_id);
   end if;
   return new;
 end;
@@ -1186,6 +1300,7 @@ begin
   select user_id into v_post_owner from public.activity_items where id = new.activity_item_id;
   if v_post_owner is not null and v_post_owner <> new.user_id then
     perform public.award_ax(v_post_owner, 'comment_received', 2, 10);
+    perform public.create_notification(v_post_owner, new.user_id, 'comment', 'activity_item', new.activity_item_id);
   end if;
   return new;
 end;
@@ -1211,6 +1326,7 @@ begin
   if new.status = 'accepted' and old.status is distinct from 'accepted' then
     perform public.award_ax(new.requester_id, 'connection_accepted', 10, 5);
     perform public.award_ax(new.addressee_id, 'connection_accepted', 10, 5);
+    perform public.create_notification(new.requester_id, new.addressee_id, 'connection_accepted', 'connection', new.id);
   end if;
   return new;
 end;
@@ -1231,6 +1347,7 @@ security definer set search_path = public
 as $$
 begin
   perform public.award_ax(new.followee_id, 'follower_received', 1, 15);
+  perform public.create_notification(new.followee_id, new.follower_id, 'follow', 'profile', new.follower_id);
   return new;
 end;
 $$;
@@ -1271,6 +1388,7 @@ security definer set search_path = public
 as $$
 begin
   perform public.award_ax(new.reviewee_id, 'review_received', 20, 5);
+  perform public.create_notification(new.reviewee_id, new.reviewer_id, 'review', 'review', new.id);
   return new;
 end;
 $$;
