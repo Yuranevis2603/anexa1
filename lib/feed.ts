@@ -147,7 +147,13 @@ export async function getFeedPage(
   supabase: SupabaseClient,
   { filter, page = 0, pageSize = FEED_PAGE_SIZE }: { filter: FeedFilter; page?: number; pageSize?: number }
 ): Promise<{ items: FeedItem[]; hasMore: boolean }> {
-  let query = supabase.from("activity_items").select(FEED_SELECT).order("created_at", { ascending: false });
+  // Community posts (community_id set) live only on their community's own
+  // page — keep them out of the global Feed.
+  let query = supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .is("community_id", null)
+    .order("created_at", { ascending: false });
 
   const postTypes = FILTER_POST_TYPES[filter];
   if (postTypes) {
@@ -177,11 +183,31 @@ export async function getForYouPool(
   const { data, error } = await supabase
     .from("activity_items")
     .select(FEED_SELECT)
+    .is("community_id", null)
     .order("created_at", { ascending: false })
     .limit(poolSize);
 
   if (error) {
     console.error("getForYouPool failed:", error.message);
+    return [];
+  }
+
+  return (data ?? []) as unknown as FeedItem[];
+}
+
+/** Posts made inside one community's "Стрічка"/"Обговорення" tabs — kept
+ * out of the global Feed (see getFeedPage/getForYouPool). Not paginated;
+ * a community's own feed is small enough at this scale to fetch in one go. */
+export async function getCommunityFeed(supabase: SupabaseClient, communityId: string, limit = 50): Promise<FeedItem[]> {
+  const { data, error } = await supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .eq("community_id", communityId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("getCommunityFeed failed:", error.message);
     return [];
   }
 
@@ -274,6 +300,8 @@ export type CreatePostInput = {
   budget?: string | null;
   workFormat?: WorkFormat | null;
   ctaType?: CtaType | null;
+  /** Scopes the post to a community's own feed instead of the global one. */
+  communityId?: string | null;
 };
 
 export async function createPost(
@@ -291,6 +319,7 @@ export async function createPost(
     budget: input.budget ?? null,
     work_format: input.workFormat ?? null,
     cta_type: input.ctaType ?? null,
+    community_id: input.communityId ?? null,
   });
 
   if (error) {

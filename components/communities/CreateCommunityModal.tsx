@@ -19,6 +19,8 @@ export default function CreateCommunityModal({
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [category, setCategory] = useState("");
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -60,7 +62,12 @@ export default function CreateCommunityModal({
     }
 
     try {
-      const community = await createCommunity(supabase, userId, name.trim(), iconUrl);
+      const community = await createCommunity(supabase, userId, {
+        name: name.trim(),
+        iconUrl,
+        description: description.trim() || null,
+        category: category.trim() || null,
+      });
       onCreated(community);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося створити спільноту.");
@@ -129,6 +136,28 @@ export default function CreateCommunityModal({
               placeholder="напр. Маркетологи ANEXA"
               required
               className="w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Категорія</label>
+            <input
+              type="text"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="напр. Засновники, Інвестиції"
+              className="w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Опис</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              placeholder="Для кого ця спільнота і про що в ній говорять..."
+              className="w-full resize-none rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
             />
           </div>
 

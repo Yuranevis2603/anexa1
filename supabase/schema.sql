@@ -164,6 +164,8 @@ create table if not exists public.communities (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   icon_url text,
+  description text,
+  category text,
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
@@ -289,6 +291,55 @@ create policy "event_registrations_delete_own"
   using (user_id = (select auth.uid()));
 
 -- ============================================================================
+-- community_livestreams
+-- "Ефір" tab — live video sessions hosted inside a community, backed by
+-- Daily.co (see app/api/daily/rooms/route.ts). Rooms are created public
+-- (no per-viewer meeting tokens), so `room_url` alone is enough to join —
+-- deliberately simple for a v1; no recording/replay, no scheduling queue.
+-- Starting/ending one is restricted to the community's own creator, same
+-- as event creation before roles/admin/moderator exist (deferred by the
+-- user's own request — see docs/instructions.md module #7).
+-- ============================================================================
+create table if not exists public.community_livestreams (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id),
+  host_id uuid not null references public.profiles(id),
+  title text not null,
+  status text not null default 'live'
+    check (status in ('live', 'ended')),
+  room_url text,
+  room_name text,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_community_livestreams_community_id on public.community_livestreams (community_id);
+
+alter table public.community_livestreams enable row level security;
+
+create policy "community_livestreams_select_all"
+  on public.community_livestreams for select
+  to authenticated
+  using (true);
+
+create policy "community_livestreams_insert_own_community"
+  on public.community_livestreams for insert
+  to public
+  with check (
+    host_id = (select auth.uid())
+    and exists (
+      select 1 from public.communities c
+      where c.id = community_id and c.created_by = (select auth.uid())
+    )
+  );
+
+create policy "community_livestreams_update_own"
+  on public.community_livestreams for update
+  to public
+  using (host_id = (select auth.uid()));
+
+-- ============================================================================
 -- connections
 -- Member-to-member connection requests (LinkedIn-style).
 -- ============================================================================
@@ -384,13 +435,21 @@ create table if not exists public.activity_items (
   work_format text
     check (work_format in ('remote', 'office', 'hybrid')),
   cta_type text
-    check (cta_type in ('contact', 'collaborate', 'join', 'learn_more'))
+    check (cta_type in ('contact', 'collaborate', 'join', 'learn_more')),
+  -- Set only for a post made inside a community's "Стрічка"/"Обговорення"
+  -- tab (see CreatePostModal's communityId prop). Null = ordinary Feed
+  -- post. Community posts are excluded from the global Feed queries
+  -- (getFeedPage/getForYouPool in lib/feed.ts) so they only ever show on
+  -- their community's own page — the two feeds don't mix.
+  community_id uuid references public.communities(id)
 );
 
 create index if not exists idx_activity_user on public.activity_items (user_id, created_at desc);
 create index if not exists idx_activity_items_created_at on public.activity_items (created_at desc);
 create index if not exists idx_activity_items_post_type on public.activity_items (post_type)
   where post_type is not null;
+create index if not exists idx_activity_items_community_id on public.activity_items (community_id)
+  where community_id is not null;
 
 alter table public.activity_items enable row level security;
 
@@ -404,10 +463,21 @@ create policy "activity_items_select_all"
   to authenticated
   using (true);
 
+-- Posting into a community's feed requires actually being a member of it;
+-- ordinary Feed posts (community_id null) are unrestricted as before.
 create policy "activity_insert_own"
   on public.activity_items for insert
   to public
-  with check (user_id = (select auth.uid()));
+  with check (
+    user_id = (select auth.uid())
+    and (
+      community_id is null
+      or exists (
+        select 1 from public.community_members cm
+        where cm.community_id = activity_items.community_id and cm.user_id = (select auth.uid())
+      )
+    )
+  );
 
 create policy "activity_update_own"
   on public.activity_items for update

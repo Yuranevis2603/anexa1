@@ -21,11 +21,14 @@ export default function CreatePostModal({
   open,
   onClose,
   onCreated,
+  communityId,
 }: {
   userId: string;
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /** Posts into a community's own feed instead of the global Feed. */
+  communityId?: string;
 }) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -111,6 +114,7 @@ export default function CreatePostModal({
         budget: budget.trim() || null,
         workFormat: workFormat || null,
         ctaType: ctaType || null,
+        communityId,
       });
 
       showToast("success", "Пост опубліковано.");
