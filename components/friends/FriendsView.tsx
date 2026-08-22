@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Filter, Search, UserPlus } from "lucide-react";
 import type { FriendListItem, IncomingConnectionRequest } from "@/lib/connections";
 import type { MatchCandidate } from "@/lib/match";
+import { useOnlineUsers } from "@/lib/presence";
 import ConnectionRequestsView from "@/components/connections/ConnectionRequestsView";
 import FriendCard from "./FriendCard";
 import RecommendationCard from "./RecommendationCard";
@@ -34,9 +35,12 @@ export default function FriendsView({
 
   const [tab, setTab] = useState<Tab>("friends");
   const [query, setQuery] = useState("");
-  const [activeTagFilter, setActiveTagFilter] = useState<string | null>(null);
+  const [selectedTags, setSelectedTags] = useState<Set<string>>(new Set());
+  const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
+  const [onlineOnly, setOnlineOnly] = useState(false);
   const [filterOpen, setFilterOpen] = useState(false);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const onlineUsers = useOnlineUsers();
 
   const allTags = useMemo(() => {
     const set = new Set<string>();
@@ -44,15 +48,42 @@ export default function FriendsView({
     return Array.from(set).sort();
   }, [friends]);
 
+  const allCompanies = useMemo(() => {
+    const set = new Set<string>();
+    friends.forEach((f) => {
+      if (f.company) set.add(f.company);
+    });
+    return Array.from(set).sort();
+  }, [friends]);
+
+  const activeFilterCount = selectedTags.size + (selectedCompany ? 1 : 0) + (onlineOnly ? 1 : 0);
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag);
+      else next.add(tag);
+      return next;
+    });
+  }
+
+  function resetFilters() {
+    setSelectedTags(new Set());
+    setSelectedCompany(null);
+    setOnlineOnly(false);
+  }
+
   const filteredFriends = useMemo(() => {
     const term = query.trim().toLowerCase();
     return friends.filter((f) => {
-      if (activeTagFilter && !f.tags.includes(activeTagFilter)) return false;
+      if (selectedTags.size > 0 && !f.tags.some((t) => selectedTags.has(t))) return false;
+      if (selectedCompany && f.company !== selectedCompany) return false;
+      if (onlineOnly && !onlineUsers.has(f.friendId)) return false;
       if (!term) return true;
       const haystack = [f.fullName, f.roleTitle ?? "", f.company ?? "", ...f.tags].join(" ").toLowerCase();
       return haystack.includes(term);
     });
-  }, [friends, query, activeTagFilter]);
+  }, [friends, query, selectedTags, selectedCompany, onlineOnly, onlineUsers]);
 
   const excludeIds = useMemo(() => new Set(friends.map((f) => f.friendId)), [friends]);
 
@@ -94,9 +125,9 @@ export default function FriendsView({
             >
               <Filter size={14} />
               Фільтр
-              {activeTagFilter ? (
+              {activeFilterCount > 0 ? (
                 <span className="ml-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-grad-purple-blue px-1 text-[10px] text-white">
-                  1
+                  {activeFilterCount}
                 </span>
               ) : null}
             </button>
@@ -104,38 +135,86 @@ export default function FriendsView({
             {filterOpen ? (
               <>
                 <div className="fixed inset-0 z-10" onClick={() => setFilterOpen(false)} aria-hidden="true" />
-                <div className="absolute right-0 top-11 z-20 max-h-72 w-52 overflow-y-auto rounded-xl border border-border-strong bg-base-card shadow-2xl">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveTagFilter(null);
-                      setFilterOpen(false);
-                    }}
-                    className={`block w-full px-3.5 py-2.5 text-left text-[12.5px] transition-colors hover:bg-white/[0.05] ${
-                      activeTagFilter === null ? "text-ink-primary" : "text-ink-tertiary"
-                    }`}
-                  >
-                    Усі теги
-                  </button>
-                  {allTags.length === 0 ? (
-                    <p className="px-3.5 py-2.5 text-[12px] text-ink-tertiary">Немає тегів у друзів.</p>
-                  ) : (
-                    allTags.map((tag) => (
+                <div className="absolute right-0 top-11 z-20 w-64 overflow-hidden rounded-xl border border-border-strong bg-base-card shadow-2xl">
+                  <div className="max-h-80 overflow-y-auto p-3">
+                    <div>
+                      <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
+                        Статус
+                      </p>
+                      <label className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[12.5px] text-ink-primary transition-colors hover:bg-white/[0.05]">
+                        <input
+                          type="checkbox"
+                          checked={onlineOnly}
+                          onChange={() => setOnlineOnly((v) => !v)}
+                          className="h-3.5 w-3.5 rounded border-border-strong accent-purple"
+                        />
+                        Тільки онлайн
+                      </label>
+                    </div>
+
+                    {allCompanies.length > 0 ? (
+                      <div className="mt-3">
+                        <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
+                          Компанія
+                        </p>
+                        <div className="flex flex-col gap-0.5">
+                          {allCompanies.map((company) => (
+                            <label
+                              key={company}
+                              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[12.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+                            >
+                              <input
+                                type="radio"
+                                name="friends-company-filter"
+                                checked={selectedCompany === company}
+                                onChange={() => setSelectedCompany(company === selectedCompany ? null : company)}
+                                className="h-3.5 w-3.5 shrink-0 accent-purple"
+                              />
+                              <span className="truncate">{company}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <div className="mt-3">
+                      <p className="px-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">
+                        Теги
+                      </p>
+                      {allTags.length === 0 ? (
+                        <p className="px-2 py-1.5 text-[12px] text-ink-tertiary">Немає тегів у друзів.</p>
+                      ) : (
+                        <div className="flex flex-col gap-0.5">
+                          {allTags.map((tag) => (
+                            <label
+                              key={tag}
+                              className="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-2 text-[12.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedTags.has(tag)}
+                                onChange={() => toggleTag(tag)}
+                                className="h-3.5 w-3.5 shrink-0 rounded border-border-strong accent-purple"
+                              />
+                              <span className="truncate">{tag}</span>
+                            </label>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {activeFilterCount > 0 ? (
+                    <div className="border-t border-border-subtle p-2">
                       <button
-                        key={tag}
                         type="button"
-                        onClick={() => {
-                          setActiveTagFilter(tag);
-                          setFilterOpen(false);
-                        }}
-                        className={`block w-full truncate px-3.5 py-2.5 text-left text-[12.5px] transition-colors hover:bg-white/[0.05] ${
-                          activeTagFilter === tag ? "text-ink-primary" : "text-ink-tertiary"
-                        }`}
+                        onClick={resetFilters}
+                        className="w-full rounded-lg px-3 py-2 text-center text-[12.5px] font-medium text-ink-tertiary transition-colors hover:bg-white/[0.05] hover:text-ink-primary"
                       >
-                        {tag}
+                        Скинути фільтри
                       </button>
-                    ))
-                  )}
+                    </div>
+                  ) : null}
                 </div>
               </>
             ) : null}
