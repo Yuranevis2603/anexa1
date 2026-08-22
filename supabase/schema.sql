@@ -1185,7 +1185,7 @@ begin
     returning created_by into v_referrer_id;
 
     if v_referrer_id is not null then
-      perform public.award_ax(v_referrer_id, 'referral', 25, 10);
+      perform public.award_ax(v_referrer_id, 'referral', 100, 10);
       perform public.create_notification(v_referrer_id, new.id, 'referral_joined', 'profile', new.id);
     end if;
   end if;

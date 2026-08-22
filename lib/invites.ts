@@ -4,6 +4,8 @@ export type InviteCode = {
   code: string;
   createdAt: string;
   usedByName: string | null;
+  usedByAvatarUrl: string | null;
+  usedById: string | null;
   usedAt: string | null;
 };
 
@@ -11,10 +13,12 @@ type InviteCodeRow = {
   code: string;
   created_at: string;
   used_at: string | null;
-  used_by_profile: { full_name: string } | null;
+  used_by: string | null;
+  used_by_profile: { full_name: string; avatar_url: string | null } | null;
 };
 
-const INVITE_SELECT = "code, created_at, used_at, used_by_profile:profiles!invite_codes_used_by_fkey(full_name)";
+const INVITE_SELECT =
+  "code, created_at, used_at, used_by, used_by_profile:profiles!invite_codes_used_by_fkey(full_name, avatar_url)";
 
 /** All invite codes `userId` has generated — pending (shareable) and used
  * (a successful referral), newest first. */
@@ -34,6 +38,8 @@ export async function getMyInvites(supabase: SupabaseClient, userId: string): Pr
     code: row.code,
     createdAt: row.created_at,
     usedByName: row.used_by_profile?.full_name ?? null,
+    usedByAvatarUrl: row.used_by_profile?.avatar_url ?? null,
+    usedById: row.used_by,
     usedAt: row.used_at,
   }));
 }
