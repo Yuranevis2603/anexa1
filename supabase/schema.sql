@@ -166,6 +166,8 @@ create table if not exists public.communities (
   icon_url text,
   description text,
   category text,
+  -- Owner-editable guidelines shown on "Про спільноту" ({title, body}[]).
+  rules jsonb not null default '[]'::jsonb,
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
@@ -183,6 +185,11 @@ create policy "communities_insert_own"
   on public.communities for insert
   to public
   with check (created_by = (select auth.uid()));
+
+create policy "communities_update_own"
+  on public.communities for update
+  to public
+  using (created_by = (select auth.uid()));
 
 -- ============================================================================
 -- community_members
@@ -338,6 +345,123 @@ create policy "community_livestreams_update_own"
   on public.community_livestreams for update
   to public
   using (host_id = (select auth.uid()));
+
+-- ============================================================================
+-- discussion_threads / discussion_replies
+-- "Обговорення" tab: real forum-style threads, separate from the "Стрічка"
+-- feed posts. reply_count is kept in sync by a trigger, same pattern as
+-- activity_items.like_count/comment_count.
+-- ============================================================================
+create table if not exists public.discussion_threads (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id),
+  user_id uuid not null references public.profiles(id),
+  topic text,
+  title text not null,
+  body text,
+  pinned boolean not null default false,
+  reply_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_discussion_threads_community_id on public.discussion_threads (community_id, pinned desc, created_at desc);
+
+alter table public.discussion_threads enable row level security;
+
+create policy "discussion_threads_select_all"
+  on public.discussion_threads for select
+  to authenticated
+  using (true);
+
+-- Starting a thread requires community membership, same rule as posting
+-- into the community's feed (activity_insert_own).
+create policy "discussion_threads_insert_member"
+  on public.discussion_threads for insert
+  to public
+  with check (
+    user_id = (select auth.uid())
+    and exists (
+      select 1 from public.community_members cm
+      where cm.community_id = discussion_threads.community_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+-- Author can edit their own thread; the community owner can additionally
+-- pin/unpin any thread (no separate admin/moderator role exists yet).
+create policy "discussion_threads_update"
+  on public.discussion_threads for update
+  to public
+  using (
+    user_id = (select auth.uid())
+    or exists (
+      select 1 from public.communities c
+      where c.id = discussion_threads.community_id and c.created_by = (select auth.uid())
+    )
+  );
+
+create policy "discussion_threads_delete"
+  on public.discussion_threads for delete
+  to public
+  using (
+    user_id = (select auth.uid())
+    or exists (
+      select 1 from public.communities c
+      where c.id = discussion_threads.community_id and c.created_by = (select auth.uid())
+    )
+  );
+
+create table if not exists public.discussion_replies (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid not null references public.discussion_threads(id) on delete cascade,
+  user_id uuid not null references public.profiles(id),
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_discussion_replies_thread_id on public.discussion_replies (thread_id, created_at asc);
+
+alter table public.discussion_replies enable row level security;
+
+create policy "discussion_replies_select_all"
+  on public.discussion_replies for select
+  to authenticated
+  using (true);
+
+create policy "discussion_replies_insert_member"
+  on public.discussion_replies for insert
+  to public
+  with check (
+    user_id = (select auth.uid())
+    and exists (
+      select 1 from public.discussion_threads dt
+      join public.community_members cm on cm.community_id = dt.community_id
+      where dt.id = discussion_replies.thread_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+create policy "discussion_replies_delete_own"
+  on public.discussion_replies for delete
+  to public
+  using (user_id = (select auth.uid()));
+
+create or replace function public.sync_discussion_reply_count()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.discussion_threads set reply_count = reply_count + 1 where id = new.thread_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.discussion_threads set reply_count = greatest(reply_count - 1, 0) where id = old.thread_id;
+    return old;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists trg_discussion_replies_count on public.discussion_replies;
+create trigger trg_discussion_replies_count
+  after insert or delete on public.discussion_replies
+  for each row execute function public.sync_discussion_reply_count();
 
 -- ============================================================================
 -- connections
@@ -597,6 +721,65 @@ drop trigger if exists trg_activity_comments_count on public.activity_comments;
 create trigger trg_activity_comments_count
   after insert or delete on public.activity_comments
   for each row execute function public.sync_activity_comment_count();
+
+-- ============================================================================
+-- post_polls / post_poll_votes
+-- Optional poll attached to a Feed/community post (activity_items). One
+-- poll per post (unique activity_item_id); one vote per (poll, user), but a
+-- member can change their vote (update, not just insert).
+-- ============================================================================
+create table if not exists public.post_polls (
+  id uuid primary key default gen_random_uuid(),
+  activity_item_id uuid not null references public.activity_items(id) on delete cascade,
+  options jsonb not null,
+  created_at timestamptz not null default now(),
+  constraint post_polls_activity_item_id_key unique (activity_item_id)
+);
+
+alter table public.post_polls enable row level security;
+
+create policy "post_polls_select_all"
+  on public.post_polls for select
+  to authenticated
+  using (true);
+
+-- Only attached at post-creation time by the post's own author.
+create policy "post_polls_insert_own_post"
+  on public.post_polls for insert
+  to public
+  with check (
+    exists (
+      select 1 from public.activity_items ai
+      where ai.id = post_polls.activity_item_id and ai.user_id = (select auth.uid())
+    )
+  );
+
+create table if not exists public.post_poll_votes (
+  poll_id uuid not null references public.post_polls(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  option_index integer not null,
+  created_at timestamptz not null default now(),
+  primary key (poll_id, user_id)
+);
+
+create index if not exists idx_post_poll_votes_poll_id on public.post_poll_votes (poll_id);
+
+alter table public.post_poll_votes enable row level security;
+
+create policy "post_poll_votes_select_all"
+  on public.post_poll_votes for select
+  to authenticated
+  using (true);
+
+create policy "post_poll_votes_insert_own"
+  on public.post_poll_votes for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "post_poll_votes_update_own"
+  on public.post_poll_votes for update
+  to public
+  using (user_id = (select auth.uid()));
 
 -- ============================================================================
 -- saved_posts

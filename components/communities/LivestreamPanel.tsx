@@ -10,17 +10,20 @@ export default function LivestreamPanel({
   userId,
   communityId,
   isOwner,
-  initialActive,
+  active,
+  onActiveChange,
   initialPast,
 }: {
   userId: string;
   communityId: string;
   isOwner: boolean;
-  initialActive: Livestream | null;
+  /** Lifted to the community page so the Feed tab's live banner and this
+   * tab always agree on whether a stream is running. */
+  active: Livestream | null;
+  onActiveChange: (next: Livestream | null) => void;
   initialPast: Livestream[];
 }) {
   const { showToast } = useToast();
-  const [active, setActive] = useState(initialActive);
   const [past, setPast] = useState(initialPast);
   const [title, setTitle] = useState("");
   const [starting, setStarting] = useState(false);
@@ -32,7 +35,7 @@ export default function LivestreamPanel({
     setStarting(true);
     try {
       const stream = await startLivestream(communityId, title.trim());
-      setActive(stream);
+      onActiveChange(stream);
       setTitle("");
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Не вдалося розпочати ефір.");
@@ -47,7 +50,7 @@ export default function LivestreamPanel({
     try {
       await endLivestream(active.id);
       setPast((prev) => [{ ...active, status: "ended", endedAt: new Date().toISOString() }, ...prev]);
-      setActive(null);
+      onActiveChange(null);
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Не вдалося завершити ефір.");
     } finally {

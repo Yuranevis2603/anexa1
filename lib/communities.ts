@@ -1,18 +1,21 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CommunityRule = { title: string; body: string };
+
 export type Community = {
   id: string;
   name: string;
   iconUrl: string | null;
   description: string | null;
   category: string | null;
+  rules: CommunityRule[];
   createdBy: string | null;
   createdAt: string;
   memberCount: number;
   isMember: boolean;
 };
 
-const COMMUNITY_COLUMNS = "id, name, icon_url, description, category, created_by, created_at";
+const COMMUNITY_COLUMNS = "id, name, icon_url, description, category, rules, created_by, created_at";
 
 type CommunityRow = {
   id: string;
@@ -20,6 +23,7 @@ type CommunityRow = {
   icon_url: string | null;
   description: string | null;
   category: string | null;
+  rules: CommunityRule[] | null;
   created_by: string | null;
   created_at: string;
 };
@@ -31,6 +35,7 @@ function toCommunity(row: CommunityRow, memberCount: number, isMember: boolean):
     iconUrl: row.icon_url,
     description: row.description,
     category: row.category,
+    rules: row.rules ?? [],
     createdBy: row.created_by,
     createdAt: row.created_at,
     memberCount,
@@ -126,6 +131,36 @@ export async function createCommunity(
   return toCommunity(data as CommunityRow, 1, true);
 }
 
+export type CommunityEditableFields = {
+  name: string;
+  description: string | null;
+  category: string | null;
+  rules: CommunityRule[];
+};
+
+/** Owner-only edit ("Керувати спільнотою") — RLS enforces created_by = auth.uid(). */
+export async function updateCommunity(
+  supabase: SupabaseClient,
+  communityId: string,
+  fields: CommunityEditableFields
+): Promise<CommunityEditableFields> {
+  const { error } = await supabase
+    .from("communities")
+    .update({
+      name: fields.name,
+      description: fields.description,
+      category: fields.category,
+      rules: fields.rules,
+    })
+    .eq("id", communityId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return fields;
+}
+
 export async function joinCommunity(supabase: SupabaseClient, userId: string, communityId: string): Promise<void> {
   const { error } = await supabase.from("community_members").insert({ community_id: communityId, user_id: userId });
   if (error) {
@@ -191,6 +226,56 @@ export async function getCommunityMembers(
 
   members.sort((a, b) => (a.isOwner === b.isOwner ? 0 : a.isOwner ? -1 : 1));
   return members;
+}
+
+/** Total post count for the sidebar's "Постів" stat. */
+export async function getCommunityPostCount(supabase: SupabaseClient, communityId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("activity_items")
+    .select("id", { count: "exact", head: true })
+    .eq("community_id", communityId);
+
+  if (error) {
+    console.error("getCommunityPostCount failed:", error.message);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+/** Per-member contribution count (posts + discussion threads + replies) for
+ * the Members tab's "N внесків" line and the sidebar's "Найактивніші"
+ * leaderboard. Three lightweight id-only reads, aggregated client-side —
+ * same approach as getCommunities' member counts. */
+export async function getMemberActivityCounts(
+  supabase: SupabaseClient,
+  communityId: string
+): Promise<Map<string, number>> {
+  const [{ data: posts, error: postsError }, { data: threads, error: threadsError }] = await Promise.all([
+    supabase.from("activity_items").select("user_id").eq("community_id", communityId),
+    supabase.from("discussion_threads").select("id, user_id").eq("community_id", communityId),
+  ]);
+
+  if (postsError) console.error("getMemberActivityCounts (posts) failed:", postsError.message);
+  if (threadsError) console.error("getMemberActivityCounts (threads) failed:", threadsError.message);
+
+  const threadRows = (threads ?? []) as { id: string; user_id: string }[];
+  const threadIds = threadRows.map((t) => t.id);
+
+  const { data: replies, error: repliesError } =
+    threadIds.length > 0
+      ? await supabase.from("discussion_replies").select("user_id").in("thread_id", threadIds)
+      : { data: [] as { user_id: string }[], error: null };
+  if (repliesError) console.error("getMemberActivityCounts (replies) failed:", repliesError.message);
+
+  const counts = new Map<string, number>();
+  const bump = (userId: string) => counts.set(userId, (counts.get(userId) ?? 0) + 1);
+
+  for (const row of (posts ?? []) as { user_id: string }[]) bump(row.user_id);
+  for (const row of threadRows) bump(row.user_id);
+  for (const row of (replies ?? []) as { user_id: string }[]) bump(row.user_id);
+
+  return counts;
 }
 
 /** Ukrainian pluralization for the "N учасників" community card line. */

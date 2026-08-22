@@ -181,7 +181,7 @@ export default function ProfileView({
       const [projectsData, reviewsData, activityData, statsData, levelsData] = await Promise.all([
         getProjects(supabase, current.id),
         getReviews(supabase, current.id),
-        getUserActivity(supabase, current.id),
+        getUserActivity(supabase, current.id, undefined, viewerId),
         getProfileStats(supabase, current.id),
         getLevels(supabase),
       ]);

@@ -27,6 +27,7 @@ import {
   postTypeMeta,
   toggleLike,
   toggleSave,
+  votePoll,
   workFormatLabel,
   type FeedComment,
   type FeedItem,
@@ -98,6 +99,33 @@ export default function PostCard({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [ctaPending, setCtaPending] = useState(false);
+
+  const [poll, setPoll] = useState(item.poll);
+  const [votePending, setVotePending] = useState(false);
+
+  async function handleVote(optionIndex: number) {
+    if (!poll || votePending || poll.myVote === optionIndex) return;
+    const previous = poll;
+    setVotePending(true);
+    setPoll((p) => {
+      if (!p) return p;
+      const counts = [...p.counts];
+      if (p.myVote !== null) counts[p.myVote] = Math.max(counts[p.myVote] - 1, 0);
+      counts[optionIndex] += 1;
+      return { ...p, counts, total: p.myVote === null ? p.total + 1 : p.total, myVote: optionIndex };
+    });
+
+    try {
+      const supabase = createClient();
+      await votePoll(supabase, poll.id, userId, optionIndex);
+    } catch (error) {
+      setPoll(previous);
+      showToast("error", "Не вдалося проголосувати.");
+      console.error("votePoll failed:", error);
+    } finally {
+      setVotePending(false);
+    }
+  }
 
   async function handleCta() {
     if (ctaPending) return;
@@ -364,6 +392,37 @@ export default function PostCard({
             sizes="(max-width: 640px) 100vw, 640px"
             className="max-h-96 w-full object-cover"
           />
+        </div>
+      ) : null}
+
+      {poll ? (
+        <div className="mt-3 flex flex-col gap-1.5">
+          {poll.options.map((option, i) => {
+            const pct = poll.total > 0 ? Math.round((poll.counts[i] / poll.total) * 100) : 0;
+            const isMine = poll.myVote === i;
+            return (
+              <button
+                key={i}
+                type="button"
+                onClick={() => handleVote(i)}
+                disabled={votePending}
+                className={`relative overflow-hidden rounded-xl border px-3.5 py-2.5 text-left transition-colors disabled:cursor-default ${
+                  isMine ? "border-purple/50" : "border-border-subtle hover:border-purple/30"
+                }`}
+              >
+                <span
+                  className="absolute inset-y-0 left-0 bg-purple/[0.16]"
+                  style={{ width: `${pct}%` }}
+                  aria-hidden
+                />
+                <span className="relative flex items-center justify-between gap-3">
+                  <span className="text-[13px] text-ink-primary">{option}</span>
+                  <span className="shrink-0 text-[12px] font-semibold text-purple-soft">{pct}%</span>
+                </span>
+              </button>
+            );
+          })}
+          <p className="mt-0.5 text-[11.5px] text-ink-tertiary">{poll.total} голосів</p>
         </div>
       ) : null}
 
