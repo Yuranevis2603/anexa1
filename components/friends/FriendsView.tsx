@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Filter, Search, UserPlus } from "lucide-react";
 import type { FriendListItem, IncomingConnectionRequest } from "@/lib/connections";
 import type { MatchCandidate } from "@/lib/match";
@@ -33,7 +34,8 @@ export default function FriendsView({
   useEffect(() => setRequests(initialRequests), [initialRequests]);
   useEffect(() => setRecommendations(initialRecommendations), [initialRecommendations]);
 
-  const [tab, setTab] = useState<Tab>("friends");
+  const searchParams = useSearchParams();
+  const [tab, setTab] = useState<Tab>(searchParams.get("tab") === "requests" ? "requests" : "friends");
   const [query, setQuery] = useState("");
   const [selectedCompany, setSelectedCompany] = useState<string | null>(null);
   const [onlineOnly, setOnlineOnly] = useState(false);

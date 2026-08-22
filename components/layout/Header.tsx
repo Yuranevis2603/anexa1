@@ -93,7 +93,7 @@ export default function Header({
                   ) : null}
                   {pendingConnections > 0 ? (
                     <Link
-                      href="/dashboard/connections"
+                      href="/dashboard/friends?tab=requests"
                       onClick={() => setNotifOpen(false)}
                       className="flex items-center gap-3 border-t border-border-subtle px-4 py-3 transition-colors hover:bg-white/[0.05]"
                     >
