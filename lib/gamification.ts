@@ -7,8 +7,12 @@ export type Level = {
 };
 
 export type ProfileStats = {
-  /** Real balance for the profile owner; 0 (RLS-blocked, never rendered) for anyone else viewing this profile. */
+  /** Lifetime AX earned — drives the level/title below and never decreases.
+   * Real value for the profile owner; 0 (RLS-blocked) for anyone else. */
   ax_points: number;
+  /** Spendable AX balance — what a purchase/subscription feature should
+   * debit. Same visibility rule as ax_points. */
+  ax_balance: number;
   reputation: number | null;
   review_count: number;
   level: number;
@@ -53,11 +57,21 @@ export async function getProfileStats(supabase: SupabaseClient, userId: string):
   if (error) console.error("getProfileStats failed:", error.message);
 
   const row = (
-    data as { reputation: number | null; review_count: number; level: number; level_title: string; ax_points: number | null }[] | null
+    data as
+      | {
+          reputation: number | null;
+          review_count: number;
+          level: number;
+          level_title: string;
+          ax_points: number | null;
+          ax_balance: number | null;
+        }[]
+      | null
   )?.[0];
 
   return {
     ax_points: row?.ax_points ?? 0,
+    ax_balance: row?.ax_balance ?? 0,
     reputation: row?.reputation ?? null,
     review_count: row?.review_count ?? 0,
     level: row?.level ?? 1,

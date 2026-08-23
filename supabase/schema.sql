@@ -1024,7 +1024,13 @@ on conflict (level) do nothing;
 -- ============================================================================
 create table if not exists public.profile_gamification (
   user_id uuid primary key references public.profiles(id) on delete cascade,
+  -- Lifetime AX earned — drives level/title, never decreases (see levels
+  -- table + get_profile_public_stats). Keep this untouched by any future
+  -- spend feature so paying for something never lowers a member's level.
   ax_points integer not null default 0,
+  -- Spendable AX balance — moves in step with ax_points as it's earned, but
+  -- is the one a future purchase/subscription feature should debit instead.
+  ax_balance integer not null default 0,
   reputation numeric(3,2),
   review_count integer not null default 0,
   profile_completion_bonus_awarded boolean not null default false,
@@ -1232,10 +1238,11 @@ security definer set search_path = public
 as $$
 begin
   if public.is_profile_complete(new) then
-    insert into public.profile_gamification (user_id, ax_points, profile_completion_bonus_awarded)
-    values (new.id, 100, true)
+    insert into public.profile_gamification (user_id, ax_points, ax_balance, profile_completion_bonus_awarded)
+    values (new.id, 100, 100, true)
     on conflict (user_id) do update
       set ax_points = public.profile_gamification.ax_points + 100,
+          ax_balance = public.profile_gamification.ax_balance + 100,
           profile_completion_bonus_awarded = true,
           updated_at = now()
       where not public.profile_gamification.profile_completion_bonus_awarded;
@@ -1292,8 +1299,8 @@ revoke execute on function public.sync_reviewee_reputation() from public, anon, 
 
 -- Narrow, deliberately-public read of profile_gamification for members other
 -- than the row's owner (whose select policy above blocks them otherwise):
--- reputation/review_count/derived level+title, plus ax_points itself when
--- (and only when) the caller IS p_user_id — one round trip covers both the
+-- reputation/review_count/derived level+title, plus ax_points/ax_balance
+-- themselves when (and only when) the caller IS p_user_id — one round trip covers both the
 -- public stats and the owner's own private balance, instead of a second,
 -- RLS-gated query against profile_gamification directly.
 -- A SECURITY DEFINER view would trip Supabase's linter at ERROR level for
@@ -1301,7 +1308,7 @@ revoke execute on function public.sync_reviewee_reputation() from public, anon, 
 -- and EXECUTE is deliberately left granted here (unlike the trigger
 -- functions above) since this one is meant to be called directly.
 create or replace function public.get_profile_public_stats(p_user_id uuid)
-returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer)
+returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer, ax_balance integer)
 language sql
 stable
 security definer
@@ -1318,7 +1325,8 @@ as $$
       (select l.title from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
       'Starter'
     ) as level_title,
-    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points
+    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points,
+    case when p_user_id = (select auth.uid()) then pg.ax_balance else null end as ax_balance
   from public.profile_gamification pg
   where pg.user_id = p_user_id;
 $$;
@@ -1582,10 +1590,11 @@ begin
 
   insert into public.ax_events (user_id, source, amount) values (p_user_id, p_source, p_amount);
 
-  insert into public.profile_gamification (user_id, ax_points)
-  values (p_user_id, p_amount)
+  insert into public.profile_gamification (user_id, ax_points, ax_balance)
+  values (p_user_id, p_amount, p_amount)
   on conflict (user_id) do update
     set ax_points = public.profile_gamification.ax_points + p_amount,
+        ax_balance = public.profile_gamification.ax_balance + p_amount,
         updated_at = now();
 end;
 $$;
