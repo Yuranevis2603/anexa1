@@ -34,6 +34,7 @@ export default async function DashboardLayout({
         initialUnreadMessages={unreadMessages}
         pendingConnections={pendingConnections}
         unreadNotifications={unreadNotifications}
+        isPlatformAdmin={profile?.is_platform_admin ?? false}
       >
         {children}
       </DashboardShell>

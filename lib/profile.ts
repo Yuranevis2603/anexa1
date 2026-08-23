@@ -8,6 +8,7 @@ export type Profile = {
   avatar_url: string | null;
   bio: string | null;
   is_approved: boolean;
+  is_platform_admin: boolean;
   created_at: string;
   updated_at: string;
   industries: string[];
