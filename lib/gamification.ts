@@ -117,6 +117,20 @@ export function computeLevelProgress(axPoints: number, levels: Level[]): LevelPr
   };
 }
 
+/** Sum of ax_events amounts for one source — e.g. total AX actually earned
+ * from referrals (which can lag `referrals.length * REFERRAL_AX` once the
+ * 10/day award_ax cap kicks in). RLS scopes ax_events to the caller's own rows. */
+export async function getAxEarnedFromSource(supabase: SupabaseClient, userId: string, source: string): Promise<number> {
+  const { data, error } = await supabase.from("ax_events").select("amount").eq("user_id", userId).eq("source", source);
+
+  if (error) {
+    console.error("getAxEarnedFromSource failed:", error.message);
+    return 0;
+  }
+
+  return ((data ?? []) as { amount: number }[]).reduce((sum, row) => sum + row.amount, 0);
+}
+
 export async function getMyReviewOf(
   supabase: SupabaseClient,
   reviewerId: string,

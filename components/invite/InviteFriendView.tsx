@@ -1,22 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Gift, Loader2, Plus } from "lucide-react";
-import { createClient } from "@/lib/supabase/client";
-import { createInviteCode, getMyInvites, type InviteCode } from "@/lib/invites";
+import { Check, Copy, Gift, GitBranch, Link2, MessageCircle, Send, Zap } from "lucide-react";
+import { computeLevelProgress, type Level, type ProfileStats } from "@/lib/gamification";
+import { bucketReferralsByWeek, type Referral } from "@/lib/invites";
+import type { Profile } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 
-const REFERRAL_AX = 100;
-
-/** Ukrainian pluralization for the joined-count summary. */
-function formatJoinCount(count: number): string {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  const word = mod10 >= 5 || mod10 === 0 || (mod100 >= 11 && mod100 <= 14) ? "друзів" : mod10 === 1 ? "друг" : "друга";
-  return `${count} ${word}`;
-}
+const DEFAULT_INVITE_TEXT =
+  "Привіт! Я в ANEXA — приватній спільноті власників бізнесу. Думаю, тобі буде корисно. Ось моє запрошення:";
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -29,149 +23,255 @@ function timeAgo(iso: string): string {
   return `${days} дн тому`;
 }
 
-export default function InviteFriendView({ userId, initialInvites }: { userId: string; initialInvites: InviteCode[] }) {
+export default function InviteFriendView({
+  profile,
+  stats,
+  levels,
+  referrals,
+  secondLevelCount,
+  axFromReferrals,
+  referralAx,
+}: {
+  profile: Profile;
+  stats: ProfileStats;
+  levels: Level[];
+  referrals: Referral[];
+  secondLevelCount: number;
+  axFromReferrals: number;
+  referralAx: number;
+}) {
   const { showToast } = useToast();
-  const [invites, setInvites] = useState(initialInvites);
-  const [creating, setCreating] = useState(false);
-  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [inviteText, setInviteText] = useState(DEFAULT_INVITE_TEXT);
+  const [editingText, setEditingText] = useState(false);
+  const [copied, setCopied] = useState(false);
 
-  const joined = invites.filter((i) => i.usedAt);
-  const pending = invites.filter((i) => !i.usedAt);
+  const code = profile.referral_code;
+  const link = code && typeof window !== "undefined" ? `${window.location.origin}/register?invite=${code}` : "";
+  const linkDisplay = code ? `anexa.club/register?invite=${code}` : "—";
 
-  async function handleCreate() {
-    if (creating) return;
-    setCreating(true);
+  const levelProgress = computeLevelProgress(stats.ax_points, levels);
+  const weeks = bucketReferralsByWeek(referrals, 10);
+  const maxWeek = Math.max(1, ...weeks.map((w) => w.count));
+
+  async function copyLink() {
+    if (!link) return;
     try {
-      const supabase = createClient();
-      await createInviteCode(supabase, userId);
-      const fresh = await getMyInvites(supabase, userId);
-      setInvites(fresh);
-    } catch (err) {
-      showToast("error", err instanceof Error ? err.message : "Не вдалося створити запрошення.");
-      console.error("createInviteCode failed:", err);
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleCopy(code: string) {
-    const url = `${window.location.origin}/register?invite=${code}`;
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopiedCode(code);
-      setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 2000);
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       showToast("error", "Не вдалося скопіювати посилання.");
     }
   }
 
+  const shareMessage = `${inviteText}\n${link}`;
+  const telegramHref = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(inviteText)}`;
+  const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
+  const qrSrc = link ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(link)}` : "";
+
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-4xl">
       <div className="flex items-center gap-2">
         <Gift size={20} className="text-purple-soft" />
         <h1 className="font-display text-lg font-semibold text-ink-primary sm:text-xl">Запросити друга</h1>
       </div>
       <p className="mt-1.5 text-[13px] text-ink-secondary">
-        Отримуйте {REFERRAL_AX} AX за кожного друга, який приєднається до ANEXA за вашим посиланням.
+        Без лімітів — одним посиланням можна поділитися з ким завгодно. За кожного, хто приєднається, — +{referralAx} AX.
       </p>
 
-      <div className="glass mt-5 rounded-2xl border border-border-subtle p-5">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="font-display text-[22px] font-semibold text-ink-primary">{formatJoinCount(joined.length)}</p>
-            <p className="text-[11.5px] text-ink-tertiary">приєдналися</p>
+      <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
+        <div className="glass relative overflow-hidden rounded-2xl border border-border-subtle p-6">
+          <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Твоє реферальне посилання</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2.5 rounded-xl border border-border-strong bg-white/[0.03] px-3.5 py-3">
+            <Link2 size={16} className="shrink-0 text-purple-soft" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[13.5px] text-ink-primary">{linkDisplay}</span>
+            <button
+              type="button"
+              onClick={copyLink}
+              disabled={!code}
+              className={`flex shrink-0 items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60 ${
+                copied ? "bg-success" : "bg-grad-purple-blue shadow-glow-purple"
+              }`}
+            >
+              {copied ? <Check size={14} /> : <Copy size={14} />}
+              {copied ? "Скопійовано" : "Копіювати"}
+            </button>
           </div>
-          <div>
-            <p className="font-display text-[22px] font-semibold text-purple-soft">{joined.length * REFERRAL_AX}</p>
-            <p className="text-[11.5px] text-ink-tertiary">AX зароблено</p>
+
+          <div className="mt-4 flex items-center justify-between">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Текст запрошення</p>
+            <button
+              type="button"
+              onClick={() => setEditingText((v) => !v)}
+              className="text-[11.5px] text-purple-soft hover:underline"
+            >
+              {editingText ? "Готово" : "Редагувати"}
+            </button>
+          </div>
+          {editingText ? (
+            <textarea
+              value={inviteText}
+              onChange={(e) => setInviteText(e.target.value)}
+              rows={3}
+              className="mt-2.5 w-full resize-y rounded-xl border border-border-subtle bg-white/[0.03] px-3.5 py-3 text-[13px] leading-relaxed text-ink-primary focus:outline-none"
+            />
+          ) : (
+            <p className="mt-2.5 rounded-xl border border-border-subtle bg-white/[0.03] px-3.5 py-3 text-[13px] leading-relaxed text-ink-primary">
+              {inviteText}
+            </p>
+          )}
+
+          <div className="mt-3.5 flex flex-wrap gap-2.5">
+            <a
+              href={telegramHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-1 min-w-[120px] items-center justify-center gap-2 rounded-xl bg-grad-purple-blue px-4 py-2.5 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+            >
+              <Send size={15} />
+              Telegram
+            </a>
+            <a
+              href={whatsappHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex flex-1 min-w-[120px] items-center justify-center gap-2 rounded-xl border border-border-subtle bg-white/[0.03] px-4 py-2.5 text-[12.5px] font-medium text-ink-primary transition-colors hover:bg-white/[0.06]"
+            >
+              <MessageCircle size={15} className="text-success" />
+              WhatsApp
+            </a>
+            {qrSrc ? (
+              <img
+                src={qrSrc}
+                alt="QR-код посилання-запрошення"
+                width={44}
+                height={44}
+                className="shrink-0 rounded-xl border border-border-subtle bg-white p-1"
+              />
+            ) : null}
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={creating}
-          className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2.5 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:opacity-60"
-        >
-          {creating ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-          Створити нове посилання-запрошення
-        </button>
+        <div className="flex flex-col gap-4">
+          <div className="glass rounded-2xl border border-border-subtle p-5">
+            <div className="flex items-center gap-2">
+              <Zap size={15} className="text-blue" />
+              <p className="text-[13px] font-semibold text-ink-primary">
+                Рівень {levelProgress.level} · {levelProgress.title}
+              </p>
+            </div>
+            <p className="font-display mt-3.5 text-[26px] font-semibold leading-none text-ink-primary">
+              {stats.ax_balance.toLocaleString("uk-UA")} <span className="text-[13px] font-medium text-ink-tertiary">AX</span>
+            </p>
+            <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.07]">
+              <div className="h-full rounded-full bg-grad-purple-blue" style={{ width: `${levelProgress.progressPercent}%` }} />
+            </div>
+            {levelProgress.nextLevelAx !== null ? (
+              <p className="mt-2 text-[11.5px] text-ink-tertiary">{levelProgress.nextLevelAx - stats.ax_points} AX до наступного рівня</p>
+            ) : null}
+            <div className="mt-4 flex items-center justify-between border-t border-border-subtle pt-3.5">
+              <p className="text-[12.5px] text-ink-secondary">Зароблено на запрошеннях</p>
+              <p className="text-[13px] font-semibold text-success">+{axFromReferrals.toLocaleString("uk-UA")} AX</p>
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl border border-border-subtle p-4">
+            <p className="text-[12.5px] font-semibold text-ink-primary">Що бачить друг</p>
+            <div className="mt-3 rounded-xl border border-border-subtle bg-base-surface px-4 py-4.5 text-center">
+              <Avatar
+                src={profile.avatar_url}
+                name={profile.full_name}
+                size={44}
+                className="relative mx-auto flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[14px] font-semibold text-white"
+              />
+              <p className="mt-2.5 text-[13px] font-medium text-ink-primary">{profile.full_name} запрошує тебе в ANEXA</p>
+              <p className="mt-1 text-[11.5px] leading-relaxed text-ink-tertiary">
+                Приватна бізнес-спільнота. Вхід лише за запрошенням.
+              </p>
+              <div className="mt-3 rounded-xl bg-grad-purple-blue px-3 py-2.5 text-[12px] font-medium text-white">
+                Прийняти запрошення
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {pending.length > 0 ? (
-        <div className="mt-6">
-          <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-ink-tertiary">
-            Активні запрошення
-          </h2>
-          <div className="flex flex-col gap-2">
-            {pending.map((invite) => (
-              <div
-                key={invite.code}
-                className="glass flex items-center justify-between gap-3 rounded-xl border border-border-subtle px-4 py-3"
-              >
-                <span className="truncate font-mono text-[13px] tracking-wide text-ink-primary">{invite.code}</span>
-                <button
-                  type="button"
-                  onClick={() => handleCopy(invite.code)}
-                  className="flex shrink-0 items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[12px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.06] hover:text-ink-primary"
-                >
-                  {copiedCode === invite.code ? (
-                    <>
-                      <Check size={13} className="text-success" />
-                      Скопійовано
-                    </>
-                  ) : (
-                    <>
-                      <Copy size={13} />
-                      Копіювати посилання
-                    </>
-                  )}
-                </button>
-              </div>
-            ))}
-          </div>
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-2">
+        <div className="glass rounded-2xl border border-border-subtle p-4">
+          <p className="text-[12px] text-ink-tertiary">Приєдналися</p>
+          <p className="font-display mt-1.5 text-[24px] font-semibold text-ink-primary">{referrals.length}</p>
         </div>
-      ) : null}
+        <div className="glass rounded-2xl border border-border-subtle p-4">
+          <p className="text-[12px] text-ink-tertiary">2-й рівень мережі</p>
+          <p className="font-display mt-1.5 text-[24px] font-semibold text-ink-primary">{secondLevelCount}</p>
+        </div>
+      </div>
 
-      <div className="mt-6">
-        <h2 className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-ink-tertiary">Приєдналися</h2>
-        {joined.length === 0 ? (
-          <div className="glass rounded-2xl border border-border-subtle p-6 text-center">
-            <p className="text-[13px] text-ink-tertiary">Ще ніхто не приєднався за вашими запрошеннями.</p>
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-2 lg:items-start">
+        <div className="glass rounded-2xl border border-border-subtle p-5">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[13px] font-semibold text-ink-primary">Запрошення у часі</p>
+            <p className="text-[11.5px] text-ink-tertiary">останні 10 тижнів</p>
           </div>
-        ) : (
-          <div className="flex flex-col gap-2">
-            {joined.map((invite) => (
-              <div key={invite.code} className="glass flex items-center gap-3 rounded-xl border border-border-subtle px-4 py-3">
-                {invite.usedById ? (
-                  <ProfilePreviewCard userId={invite.usedById}>
-                    <Avatar
-                      src={invite.usedByAvatarUrl}
-                      name={invite.usedByName ?? "?"}
-                      size={36}
-                      className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
-                    />
-                  </ProfilePreviewCard>
-                ) : null}
-                <div className="min-w-0 flex-1">
-                  {invite.usedById ? (
-                    <ProfilePreviewCard userId={invite.usedById}>
-                      <span className="truncate text-[13px] font-medium text-ink-primary hover:underline">
-                        {invite.usedByName ?? "Учасник ANEXA"}
-                      </span>
-                    </ProfilePreviewCard>
-                  ) : (
-                    <span className="truncate text-[13px] font-medium text-ink-primary">
-                      {invite.usedByName ?? "Учасник ANEXA"}
-                    </span>
-                  )}
-                  <p className="text-[11.5px] text-ink-tertiary">{invite.usedAt ? timeAgo(invite.usedAt) : null}</p>
+          {referrals.length === 0 ? (
+            <p className="mt-6 py-10 text-center text-[13px] text-ink-tertiary">Поки що ніхто не приєднався.</p>
+          ) : (
+            <div className="mt-5 flex h-[130px] items-end gap-2">
+              {weeks.map((w, i) => (
+                <div key={i} className="flex flex-1 flex-col items-center gap-2">
+                  <div
+                    className="w-full rounded-t bg-grad-purple-blue"
+                    style={{ height: `${Math.max(3, Math.round((w.count / maxWeek) * 110))}px` }}
+                    title={`${w.count}`}
+                  />
+                  <span className="text-[10px] text-ink-tertiary">{w.label}</span>
                 </div>
-                <span className="shrink-0 text-[12.5px] font-semibold text-purple-soft">+{REFERRAL_AX} AX</span>
+              ))}
+            </div>
+          )}
+
+          {secondLevelCount > 0 ? (
+            <div className="mt-4 flex items-center gap-3.5 border-t border-border-subtle pt-4">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/[0.12] text-purple-soft">
+                <GitBranch size={16} />
               </div>
-            ))}
+              <div>
+                <p className="text-[12.5px] font-medium text-ink-primary">Твої запрошені привели ще {secondLevelCount}</p>
+                <p className="text-[11.5px] text-ink-tertiary">2-й рівень мережі</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="glass rounded-2xl border border-border-subtle p-5">
+          <div className="flex items-baseline justify-between">
+            <p className="text-[13px] font-semibold text-ink-primary">Запрошені</p>
+            <p className="text-[11.5px] text-ink-tertiary">{referrals.length} усього</p>
           </div>
-        )}
+          {referrals.length === 0 ? (
+            <p className="mt-6 py-10 text-center text-[13px] text-ink-tertiary">Ще ніхто не приєднався за вашим посиланням.</p>
+          ) : (
+            <div className="mt-2 flex flex-col">
+              {referrals.map((r) => (
+                <ProfilePreviewCard key={r.userId} userId={r.userId}>
+                  <div className="flex items-center gap-3 border-b border-border-subtle py-2.5 last:border-0">
+                    <Avatar
+                      src={r.avatarUrl}
+                      name={r.fullName}
+                      size={34}
+                      className="relative flex h-[34px] w-[34px] shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[11.5px] font-semibold text-white"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[13px] font-medium text-ink-primary hover:underline">{r.fullName}</p>
+                      <p className="truncate text-[11.5px] text-ink-tertiary">{timeAgo(r.joinedAt)}</p>
+                    </div>
+                    <span className="shrink-0 text-[12px] font-semibold text-success">+{referralAx} AX</span>
+                  </div>
+                </ProfilePreviewCard>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

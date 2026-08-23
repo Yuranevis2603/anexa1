@@ -144,15 +144,13 @@ export default function AuthCard({
     const supabase = createClient();
 
     try {
-      // 1. Validate the invite code is real and unused.
-      const { data: invite, error: inviteError } = await supabase
-        .from("invite_codes")
-        .select("code, used_by")
-        .eq("code", regInvite.trim())
-        .is("used_by", null)
-        .single();
+      // 1. Validate the code — either an unused invite_codes entry or a
+      //    member's persistent referral code.
+      const { data: isValid, error: inviteError } = await supabase.rpc("validate_invite_code", {
+        p_code: regInvite.trim(),
+      });
 
-      if (inviteError || !invite) {
+      if (inviteError || !isValid) {
         setRegErrors({ invite: "Невірний або вже використаний код запрошення" });
         setRegLoading(false);
         return;
