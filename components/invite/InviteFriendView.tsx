@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Gift, GitBranch, Link2, MessageCircle, Send, Zap } from "lucide-react";
+import { Check, Copy, Download, Gift, GitBranch, Image as ImageIcon, Link2, MessageCircle, Send, Zap } from "lucide-react";
 import { computeLevelProgress, type Level, type ProfileStats } from "@/lib/gamification";
 import { bucketReferralsByWeek, type Referral } from "@/lib/invites";
 import type { Profile } from "@/lib/profile";
@@ -11,6 +11,12 @@ import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 
 const DEFAULT_INVITE_TEXT =
   "Привіт! Я в ANEXA — приватній спільноті власників бізнесу. Думаю, тобі буде корисно. Ось моє запрошення:";
+
+const CREATIVE_TEMPLATES: { id: "purple" | "gold" | "minimal"; label: string }[] = [
+  { id: "purple", label: "Фіолетовий" },
+  { id: "gold", label: "Золотий" },
+  { id: "minimal", label: "Мінімалізм" },
+];
 
 function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
@@ -195,6 +201,42 @@ export default function InviteFriendView({
           </div>
         </div>
       </div>
+
+      {code ? (
+        <div className="glass mt-4 rounded-2xl border border-border-subtle p-5">
+          <div className="flex items-center gap-2">
+            <ImageIcon size={15} className="text-purple-soft" />
+            <p className="text-[13px] font-semibold text-ink-primary">Готові креативи для посилання</p>
+          </div>
+          <p className="mt-1 text-[12px] text-ink-secondary">
+            Картки з твоїм ім&rsquo;ям, фото і QR-кодом — готові для сторіс і постів у соцмережах.
+          </p>
+          <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+            {CREATIVE_TEMPLATES.map((t) => (
+              <div
+                key={t.id}
+                className="flex flex-col items-center gap-2.5 rounded-xl border border-border-subtle bg-white/[0.02] p-3"
+              >
+                <img
+                  src={`/api/invite-creative/${t.id}`}
+                  alt={`Креатив «${t.label}»`}
+                  loading="lazy"
+                  className="aspect-square w-full rounded-lg border border-border-subtle object-cover"
+                />
+                <p className="text-[12px] text-ink-secondary">{t.label}</p>
+                <a
+                  href={`/api/invite-creative/${t.id}`}
+                  download={`anexa-invite-${t.id}.png`}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[12px] font-medium text-ink-primary transition-colors hover:bg-white/[0.06]"
+                >
+                  <Download size={13} />
+                  Завантажити
+                </a>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-2">
         <div className="glass rounded-2xl border border-border-subtle p-4">
