@@ -72,6 +72,13 @@ create policy "Unused invite codes are readable for registration"
   to anon
   using (used_by is null);
 
+-- Referral system: any member can generate their own invite code (not just
+-- hand-seeded ones) to invite people into the club.
+create policy "invite_codes_insert_own"
+  on public.invite_codes for insert
+  to public
+  with check (created_by = (select auth.uid()));
+
 -- ============================================================================
 -- experience
 -- Work-experience entries shown on a member's profile.
@@ -164,6 +171,10 @@ create table if not exists public.communities (
   id uuid primary key default gen_random_uuid(),
   name text not null,
   icon_url text,
+  description text,
+  category text,
+  -- Owner-editable guidelines shown on "Про спільноту" ({title, body}[]).
+  rules jsonb not null default '[]'::jsonb,
   created_by uuid references public.profiles(id),
   created_at timestamptz not null default now()
 );
@@ -182,6 +193,11 @@ create policy "communities_insert_own"
   to public
   with check (created_by = (select auth.uid()));
 
+create policy "communities_update_own"
+  on public.communities for update
+  to public
+  using (created_by = (select auth.uid()));
+
 -- ============================================================================
 -- community_members
 -- Join table: which members belong to which community.
@@ -190,6 +206,10 @@ create table if not exists public.community_members (
   community_id uuid not null references public.communities(id),
   user_id uuid not null references public.profiles(id),
   joined_at timestamptz not null default now(),
+  -- Owner identity stays on communities.created_by — this only marks staff
+  -- among the rest of the membership. See is_community_owner/admin/staff.
+  role text not null default 'member'
+    check (role in ('admin', 'moderator', 'member')),
   primary key (community_id, user_id)
 );
 
@@ -212,18 +232,65 @@ create policy "community_members_delete_own"
   to public
   using (user_id = (select auth.uid()));
 
+create or replace function public.is_community_owner(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select exists (
+    select 1 from public.communities c
+    where c.id = p_community_id and c.created_by = p_user_id
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_community_admin(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select public.is_community_owner(p_community_id, p_user_id) or exists (
+    select 1 from public.community_members cm
+    where cm.community_id = p_community_id and cm.user_id = p_user_id and cm.role = 'admin'
+  );
+$$ language sql stable security definer set search_path = public;
+
+create or replace function public.is_community_staff(p_community_id uuid, p_user_id uuid)
+returns boolean as $$
+  select public.is_community_admin(p_community_id, p_user_id) or exists (
+    select 1 from public.community_members cm
+    where cm.community_id = p_community_id and cm.user_id = p_user_id and cm.role = 'moderator'
+  );
+$$ language sql stable security definer set search_path = public;
+
+-- Owner-only: grant/revoke Admin or Moderator on any member row.
+create policy "community_members_update_role_owner"
+  on public.community_members for update
+  to public
+  using (public.is_community_owner(community_id, (select auth.uid())));
+
+-- Owner or Admin can remove a plain member; only the owner can remove an
+-- Admin; the owner's own row (identified via communities.created_by, not
+-- this table) can never be removed this way.
+create policy "community_members_delete_staff"
+  on public.community_members for delete
+  to public
+  using (
+    public.is_community_admin(community_id, (select auth.uid()))
+    and user_id <> (select created_by from public.communities c where c.id = community_members.community_id)
+    and (role <> 'admin' or public.is_community_owner(community_id, (select auth.uid())))
+  );
+
 -- ============================================================================
 -- events
--- Community events. No insert/update/delete policy exists yet — rows are
--- managed outside the client API (service role / dashboard).
+-- Community events. Any member can create one (unlike communities, not
+-- capped at one per creator — an organizer routinely runs several).
 -- ============================================================================
 create table if not exists public.events (
   id uuid primary key default gen_random_uuid(),
   title text not null,
+  description text,
   location text,
   event_date timestamptz not null,
+  created_by uuid references public.profiles(id),
+  community_id uuid references public.communities(id),
   created_at timestamptz not null default now()
 );
+
+create index if not exists idx_events_community_id on public.events (community_id);
 
 alter table public.events enable row level security;
 
@@ -231,6 +298,21 @@ create policy "events_select_all"
   on public.events for select
   to authenticated
   using (true);
+
+create policy "events_insert_own"
+  on public.events for insert
+  to public
+  with check (created_by = (select auth.uid()));
+
+create policy "events_update_own"
+  on public.events for update
+  to public
+  using (created_by = (select auth.uid()));
+
+create policy "events_delete_own"
+  on public.events for delete
+  to public
+  using (created_by = (select auth.uid()));
 
 -- ============================================================================
 -- event_registrations
@@ -267,6 +349,174 @@ create policy "event_registrations_delete_own"
   on public.event_registrations for delete
   to public
   using (user_id = (select auth.uid()));
+
+-- ============================================================================
+-- community_livestreams
+-- "Ефір" tab — live video sessions hosted inside a community, backed by
+-- Daily.co (see app/api/daily/rooms/route.ts). Rooms are created public
+-- (no per-viewer meeting tokens), so `room_url` alone is enough to join —
+-- deliberately simple for a v1; no recording/replay, no scheduling queue.
+-- Starting/ending one is restricted to the community's owner or an Admin
+-- (not Moderator — hosting is an operational role, not a content-moderation
+-- one).
+-- ============================================================================
+create table if not exists public.community_livestreams (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id),
+  host_id uuid not null references public.profiles(id),
+  title text not null,
+  status text not null default 'live'
+    check (status in ('live', 'ended')),
+  room_url text,
+  room_name text,
+  started_at timestamptz not null default now(),
+  ended_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_community_livestreams_community_id on public.community_livestreams (community_id);
+
+alter table public.community_livestreams enable row level security;
+
+create policy "community_livestreams_select_all"
+  on public.community_livestreams for select
+  to authenticated
+  using (true);
+
+create policy "community_livestreams_insert_own_community"
+  on public.community_livestreams for insert
+  to public
+  with check (
+    host_id = (select auth.uid())
+    and public.is_community_admin(community_id, (select auth.uid()))
+  );
+
+create policy "community_livestreams_update_own"
+  on public.community_livestreams for update
+  to public
+  using (host_id = (select auth.uid()));
+
+-- ============================================================================
+-- discussion_threads / discussion_replies
+-- "Обговорення" tab: real forum-style threads, separate from the "Стрічка"
+-- feed posts. reply_count is kept in sync by a trigger, same pattern as
+-- activity_items.like_count/comment_count.
+-- ============================================================================
+create table if not exists public.discussion_threads (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id),
+  user_id uuid not null references public.profiles(id),
+  topic text,
+  title text not null,
+  body text,
+  pinned boolean not null default false,
+  reply_count integer not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_discussion_threads_community_id on public.discussion_threads (community_id, pinned desc, created_at desc);
+
+alter table public.discussion_threads enable row level security;
+
+create policy "discussion_threads_select_all"
+  on public.discussion_threads for select
+  to authenticated
+  using (true);
+
+-- Starting a thread requires community membership, same rule as posting
+-- into the community's feed (activity_insert_own).
+create policy "discussion_threads_insert_member"
+  on public.discussion_threads for insert
+  to public
+  with check (
+    user_id = (select auth.uid())
+    and exists (
+      select 1 from public.community_members cm
+      where cm.community_id = discussion_threads.community_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+-- Author can edit their own thread; Admin/Moderator can additionally
+-- pin/unpin or remove any thread in their community.
+create policy "discussion_threads_update"
+  on public.discussion_threads for update
+  to public
+  using (
+    user_id = (select auth.uid())
+    or public.is_community_staff(community_id, (select auth.uid()))
+  );
+
+create policy "discussion_threads_delete"
+  on public.discussion_threads for delete
+  to public
+  using (
+    user_id = (select auth.uid())
+    or public.is_community_staff(community_id, (select auth.uid()))
+  );
+
+create table if not exists public.discussion_replies (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid not null references public.discussion_threads(id) on delete cascade,
+  user_id uuid not null references public.profiles(id),
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_discussion_replies_thread_id on public.discussion_replies (thread_id, created_at asc);
+
+alter table public.discussion_replies enable row level security;
+
+create policy "discussion_replies_select_all"
+  on public.discussion_replies for select
+  to authenticated
+  using (true);
+
+create policy "discussion_replies_insert_member"
+  on public.discussion_replies for insert
+  to public
+  with check (
+    user_id = (select auth.uid())
+    and exists (
+      select 1 from public.discussion_threads dt
+      join public.community_members cm on cm.community_id = dt.community_id
+      where dt.id = discussion_replies.thread_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+create policy "discussion_replies_delete_own"
+  on public.discussion_replies for delete
+  to public
+  using (user_id = (select auth.uid()));
+
+create policy "discussion_replies_delete_staff"
+  on public.discussion_replies for delete
+  to public
+  using (
+    exists (
+      select 1 from public.discussion_threads dt
+      where dt.id = discussion_replies.thread_id
+      and public.is_community_staff(dt.community_id, (select auth.uid()))
+    )
+  );
+
+create or replace function public.sync_discussion_reply_count()
+returns trigger as $$
+begin
+  if tg_op = 'INSERT' then
+    update public.discussion_threads set reply_count = reply_count + 1 where id = new.thread_id;
+    return new;
+  elsif tg_op = 'DELETE' then
+    update public.discussion_threads set reply_count = greatest(reply_count - 1, 0) where id = old.thread_id;
+    return old;
+  end if;
+  return null;
+end;
+$$ language plpgsql security definer set search_path = public;
+
+drop trigger if exists trg_discussion_replies_count on public.discussion_replies;
+create trigger trg_discussion_replies_count
+  after insert or delete on public.discussion_replies
+  for each row execute function public.sync_discussion_reply_count();
 
 -- ============================================================================
 -- connections
@@ -364,13 +614,21 @@ create table if not exists public.activity_items (
   work_format text
     check (work_format in ('remote', 'office', 'hybrid')),
   cta_type text
-    check (cta_type in ('contact', 'collaborate', 'join', 'learn_more'))
+    check (cta_type in ('contact', 'collaborate', 'join', 'learn_more')),
+  -- Set only for a post made inside a community's "Стрічка"/"Обговорення"
+  -- tab (see CreatePostModal's communityId prop). Null = ordinary Feed
+  -- post. Community posts are excluded from the global Feed queries
+  -- (getFeedPage/getForYouPool in lib/feed.ts) so they only ever show on
+  -- their community's own page — the two feeds don't mix.
+  community_id uuid references public.communities(id)
 );
 
 create index if not exists idx_activity_user on public.activity_items (user_id, created_at desc);
 create index if not exists idx_activity_items_created_at on public.activity_items (created_at desc);
 create index if not exists idx_activity_items_post_type on public.activity_items (post_type)
   where post_type is not null;
+create index if not exists idx_activity_items_community_id on public.activity_items (community_id)
+  where community_id is not null;
 
 alter table public.activity_items enable row level security;
 
@@ -384,10 +642,21 @@ create policy "activity_items_select_all"
   to authenticated
   using (true);
 
+-- Posting into a community's feed requires actually being a member of it;
+-- ordinary Feed posts (community_id null) are unrestricted as before.
 create policy "activity_insert_own"
   on public.activity_items for insert
   to public
-  with check (user_id = (select auth.uid()));
+  with check (
+    user_id = (select auth.uid())
+    and (
+      community_id is null
+      or exists (
+        select 1 from public.community_members cm
+        where cm.community_id = activity_items.community_id and cm.user_id = (select auth.uid())
+      )
+    )
+  );
 
 create policy "activity_update_own"
   on public.activity_items for update
@@ -398,6 +667,12 @@ create policy "activity_delete_own"
   on public.activity_items for delete
   to public
   using (user_id = (select auth.uid()));
+
+-- Admin/Moderator can remove any community post, not just their own.
+create policy "activity_delete_staff"
+  on public.activity_items for delete
+  to public
+  using (community_id is not null and public.is_community_staff(community_id, (select auth.uid())));
 
 -- ============================================================================
 -- activity_likes
@@ -507,6 +782,65 @@ drop trigger if exists trg_activity_comments_count on public.activity_comments;
 create trigger trg_activity_comments_count
   after insert or delete on public.activity_comments
   for each row execute function public.sync_activity_comment_count();
+
+-- ============================================================================
+-- post_polls / post_poll_votes
+-- Optional poll attached to a Feed/community post (activity_items). One
+-- poll per post (unique activity_item_id); one vote per (poll, user), but a
+-- member can change their vote (update, not just insert).
+-- ============================================================================
+create table if not exists public.post_polls (
+  id uuid primary key default gen_random_uuid(),
+  activity_item_id uuid not null references public.activity_items(id) on delete cascade,
+  options jsonb not null,
+  created_at timestamptz not null default now(),
+  constraint post_polls_activity_item_id_key unique (activity_item_id)
+);
+
+alter table public.post_polls enable row level security;
+
+create policy "post_polls_select_all"
+  on public.post_polls for select
+  to authenticated
+  using (true);
+
+-- Only attached at post-creation time by the post's own author.
+create policy "post_polls_insert_own_post"
+  on public.post_polls for insert
+  to public
+  with check (
+    exists (
+      select 1 from public.activity_items ai
+      where ai.id = post_polls.activity_item_id and ai.user_id = (select auth.uid())
+    )
+  );
+
+create table if not exists public.post_poll_votes (
+  poll_id uuid not null references public.post_polls(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  option_index integer not null,
+  created_at timestamptz not null default now(),
+  primary key (poll_id, user_id)
+);
+
+create index if not exists idx_post_poll_votes_poll_id on public.post_poll_votes (poll_id);
+
+alter table public.post_poll_votes enable row level security;
+
+create policy "post_poll_votes_select_all"
+  on public.post_poll_votes for select
+  to authenticated
+  using (true);
+
+create policy "post_poll_votes_insert_own"
+  on public.post_poll_votes for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "post_poll_votes_update_own"
+  on public.post_poll_votes for update
+  to public
+  using (user_id = (select auth.uid()));
 
 -- ============================================================================
 -- saved_posts
@@ -690,7 +1024,13 @@ on conflict (level) do nothing;
 -- ============================================================================
 create table if not exists public.profile_gamification (
   user_id uuid primary key references public.profiles(id) on delete cascade,
+  -- Lifetime AX earned — drives level/title, never decreases (see levels
+  -- table + get_profile_public_stats). Keep this untouched by any future
+  -- spend feature so paying for something never lowers a member's level.
   ax_points integer not null default 0,
+  -- Spendable AX balance — moves in step with ax_points as it's earned, but
+  -- is the one a future purchase/subscription feature should debit instead.
+  ax_balance integer not null default 0,
   reputation numeric(3,2),
   review_count integer not null default 0,
   profile_completion_bonus_awarded boolean not null default false,
@@ -719,7 +1059,8 @@ create table if not exists public.ax_events (
   user_id uuid not null references public.profiles(id) on delete cascade,
   source text not null check (source in (
     'profile_completion', 'post', 'like_received', 'comment_received',
-    'connection_accepted', 'follower_received', 'project_added', 'review_received'
+    'connection_accepted', 'follower_received', 'project_added', 'review_received',
+    'referral'
   )),
   amount integer not null,
   created_at timestamptz not null default now()
@@ -830,8 +1171,14 @@ create policy "user_reports_insert_own"
 -- their invite code as used in the same transaction. Runs as security
 -- definer so it works regardless of the caller's RLS/session state (e.g.
 -- before email confirmation, when the client has no session yet).
+--
+-- Referral payout lives here rather than its own trigger: the referrer id
+-- only exists as the result of this same UPDATE (invite_codes.created_by),
+-- so there's nothing separate to trigger off of.
 create or replace function public.handle_new_user()
 returns trigger as $$
+declare
+  v_referrer_id uuid;
 begin
   insert into public.profiles (id, full_name)
   values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Новий учасник'));
@@ -840,7 +1187,13 @@ begin
     update public.invite_codes
     set used_by = new.id, used_at = now()
     where code = new.raw_user_meta_data->>'invite_code'
-      and used_by is null;
+      and used_by is null
+    returning created_by into v_referrer_id;
+
+    if v_referrer_id is not null then
+      perform public.award_ax(v_referrer_id, 'referral', 100, 10);
+      perform public.create_notification(v_referrer_id, new.id, 'referral_joined', 'profile', new.id);
+    end if;
   end if;
 
   return new;
@@ -885,10 +1238,11 @@ security definer set search_path = public
 as $$
 begin
   if public.is_profile_complete(new) then
-    insert into public.profile_gamification (user_id, ax_points, profile_completion_bonus_awarded)
-    values (new.id, 100, true)
+    insert into public.profile_gamification (user_id, ax_points, ax_balance, profile_completion_bonus_awarded)
+    values (new.id, 100, 100, true)
     on conflict (user_id) do update
       set ax_points = public.profile_gamification.ax_points + 100,
+          ax_balance = public.profile_gamification.ax_balance + 100,
           profile_completion_bonus_awarded = true,
           updated_at = now()
       where not public.profile_gamification.profile_completion_bonus_awarded;
@@ -945,8 +1299,8 @@ revoke execute on function public.sync_reviewee_reputation() from public, anon, 
 
 -- Narrow, deliberately-public read of profile_gamification for members other
 -- than the row's owner (whose select policy above blocks them otherwise):
--- reputation/review_count/derived level+title, plus ax_points itself when
--- (and only when) the caller IS p_user_id — one round trip covers both the
+-- reputation/review_count/derived level+title, plus ax_points/ax_balance
+-- themselves when (and only when) the caller IS p_user_id — one round trip covers both the
 -- public stats and the owner's own private balance, instead of a second,
 -- RLS-gated query against profile_gamification directly.
 -- A SECURITY DEFINER view would trip Supabase's linter at ERROR level for
@@ -954,7 +1308,7 @@ revoke execute on function public.sync_reviewee_reputation() from public, anon, 
 -- and EXECUTE is deliberately left granted here (unlike the trigger
 -- functions above) since this one is meant to be called directly.
 create or replace function public.get_profile_public_stats(p_user_id uuid)
-returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer)
+returns table (reputation numeric, review_count integer, level integer, level_title text, ax_points integer, ax_balance integer)
 language sql
 stable
 security definer
@@ -971,7 +1325,8 @@ as $$
       (select l.title from public.levels l where l.min_ax <= pg.ax_points order by l.min_ax desc limit 1),
       'Starter'
     ) as level_title,
-    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points
+    case when p_user_id = (select auth.uid()) then pg.ax_points else null end as ax_points,
+    case when p_user_id = (select auth.uid()) then pg.ax_balance else null end as ax_balance
   from public.profile_gamification pg
   where pg.user_id = p_user_id;
 $$;
@@ -1103,7 +1458,8 @@ create table if not exists public.notifications (
   user_id uuid not null references public.profiles(id),
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
-    'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review'
+    'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
+    'referral_joined'
   )),
   entity_type text,
   entity_id uuid,
@@ -1234,10 +1590,11 @@ begin
 
   insert into public.ax_events (user_id, source, amount) values (p_user_id, p_source, p_amount);
 
-  insert into public.profile_gamification (user_id, ax_points)
-  values (p_user_id, p_amount)
+  insert into public.profile_gamification (user_id, ax_points, ax_balance)
+  values (p_user_id, p_amount, p_amount)
   on conflict (user_id) do update
     set ax_points = public.profile_gamification.ax_points + p_amount,
+        ax_balance = public.profile_gamification.ax_balance + p_amount,
         updated_at = now();
 end;
 $$;
@@ -1403,6 +1760,102 @@ revoke execute on function public.award_review_ax() from public, anon, authentic
 -- Project-level event trigger (public.rls_auto_enable) automatically runs
 -- `alter table ... enable row level security` on every newly created table
 -- in the public schema, so RLS is on by default even if a migration forgets it.
+
+-- ============================================================================
+-- Community admin — access mode, invite links, join requests, bans, audit
+-- log. Builds on the existing is_community_owner/is_community_admin/
+-- is_community_staff helpers and community_members.role rather than a
+-- separate model.
+-- ============================================================================
+alter table public.communities
+  add column if not exists access text not null default 'public'
+    check (access in ('public', 'request', 'private')),
+  add column if not exists invite_code text unique default substr(md5(random()::text), 1, 6),
+  add column if not exists settings jsonb not null default
+    '{"approve":false,"moderatePosts":false,"memberEvents":true,"digest":true}'::jsonb,
+  add column if not exists archived_at timestamptz;
+
+create policy "communities_update_admins"
+  on public.communities for update
+  to authenticated
+  using (public.is_community_admin(id, (select auth.uid())));
+
+create policy "communities_delete_owner"
+  on public.communities for delete
+  to authenticated
+  using (created_by = (select auth.uid()));
+
+create table if not exists public.community_join_requests (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (community_id, user_id)
+);
+
+create index if not exists idx_community_join_requests_community_id on public.community_join_requests (community_id);
+
+alter table public.community_join_requests enable row level security;
+
+create policy "community_join_requests_select"
+  on public.community_join_requests for select
+  to authenticated
+  using (user_id = (select auth.uid()) or public.is_community_staff(community_id, (select auth.uid())));
+
+create policy "community_join_requests_insert_own"
+  on public.community_join_requests for insert
+  to authenticated
+  with check (user_id = (select auth.uid()));
+
+create policy "community_join_requests_delete_staff"
+  on public.community_join_requests for delete
+  to authenticated
+  using (user_id = (select auth.uid()) or public.is_community_staff(community_id, (select auth.uid())));
+
+create table if not exists public.community_bans (
+  community_id uuid not null references public.communities(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  reason text,
+  banned_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  primary key (community_id, user_id)
+);
+
+alter table public.community_bans enable row level security;
+
+create policy "community_bans_select_admins"
+  on public.community_bans for select
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())));
+
+create policy "community_bans_manage_admins"
+  on public.community_bans for all
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())))
+  with check (public.is_community_admin(community_id, (select auth.uid())));
+
+create table if not exists public.community_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id) on delete cascade,
+  actor_id uuid references public.profiles(id),
+  action text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_community_audit_log_community_id on public.community_audit_log (community_id);
+
+alter table public.community_audit_log enable row level security;
+
+create policy "community_audit_log_select_admins"
+  on public.community_audit_log for select
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())));
+
+create policy "community_audit_log_insert_staff"
+  on public.community_audit_log for insert
+  to authenticated
+  with check (actor_id = (select auth.uid()) and public.is_community_staff(community_id, (select auth.uid())));
 
 -- ============================================================================
 -- Storage buckets

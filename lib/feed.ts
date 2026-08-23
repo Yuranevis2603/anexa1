@@ -70,6 +70,17 @@ export type FeedAuthor = {
   membership_tier: string | null;
 };
 
+export type Poll = {
+  id: string;
+  options: string[];
+  /** Vote count per option, same order as options. */
+  counts: number[];
+  total: number;
+  /** The viewing user's chosen option index, or null if they haven't voted
+   * (or no viewer id was passed to the fetch that returned this item). */
+  myVote: number | null;
+};
+
 export type FeedItem = {
   id: string;
   user_id: string;
@@ -85,6 +96,7 @@ export type FeedItem = {
   comment_count: number;
   created_at: string;
   author: FeedAuthor | null;
+  poll: Poll | null;
 };
 
 export type FeedComment = {
@@ -97,13 +109,59 @@ export type FeedComment = {
 };
 
 const FEED_SELECT =
-  "id, user_id, type, post_type, body, image_url, category, budget, work_format, cta_type, like_count, comment_count, created_at, author:profiles!activity_items_user_id_fkey(full_name, avatar_url, role_title, username, membership_tier)";
+  "id, user_id, type, post_type, body, image_url, category, budget, work_format, cta_type, like_count, comment_count, created_at, author:profiles!activity_items_user_id_fkey(full_name, avatar_url, role_title, username, membership_tier), poll:post_polls(id, options)";
+
+type RawFeedRow = Omit<FeedItem, "poll"> & { poll: { id: string; options: string[] } | null };
+
+/** Batch-fills the vote counts (and, if `viewerId` is given, that viewer's
+ * own vote) for every poll among `rows` — one query for the whole page
+ * instead of one per post. */
+async function attachPollResults(
+  supabase: SupabaseClient,
+  rows: RawFeedRow[],
+  viewerId?: string
+): Promise<FeedItem[]> {
+  const pollIds = rows.map((r) => r.poll?.id).filter((id): id is string => Boolean(id));
+  if (pollIds.length === 0) {
+    return rows.map((r) => ({ ...r, poll: null }));
+  }
+
+  const { data, error } = await supabase
+    .from("post_poll_votes")
+    .select("poll_id, option_index, user_id")
+    .in("poll_id", pollIds);
+
+  if (error) {
+    console.error("attachPollResults failed:", error.message);
+  }
+
+  const votes = (data ?? []) as { poll_id: string; option_index: number; user_id: string }[];
+  const byPoll = new Map<string, typeof votes>();
+  for (const vote of votes) {
+    const bucket = byPoll.get(vote.poll_id) ?? [];
+    bucket.push(vote);
+    byPoll.set(vote.poll_id, bucket);
+  }
+
+  return rows.map((r) => {
+    if (!r.poll) return { ...r, poll: null };
+    const bucket = byPoll.get(r.poll.id) ?? [];
+    const counts = new Array(r.poll.options.length).fill(0);
+    let myVote: number | null = null;
+    for (const vote of bucket) {
+      if (vote.option_index >= 0 && vote.option_index < counts.length) counts[vote.option_index]++;
+      if (viewerId && vote.user_id === viewerId) myVote = vote.option_index;
+    }
+    return { ...r, poll: { id: r.poll.id, options: r.poll.options, counts, total: bucket.length, myVote } };
+  });
+}
 
 /** Small "recent activity" feed for a single member's own profile page. */
 export async function getUserActivity(
   supabase: SupabaseClient,
   userId: string,
-  limit = 6
+  limit = 6,
+  viewerId?: string
 ): Promise<FeedItem[]> {
   const { data, error } = await supabase
     .from("activity_items")
@@ -117,20 +175,22 @@ export async function getUserActivity(
     return [];
   }
 
-  return (data ?? []) as unknown as FeedItem[];
+  return attachPollResults(supabase, (data ?? []) as unknown as RawFeedRow[], viewerId);
 }
 
 /** Single post by id — for permalinks (e.g. a like/comment notification
  * deep-linking to the exact post instead of the general feed). */
-export async function getPostById(supabase: SupabaseClient, id: string): Promise<FeedItem | null> {
+export async function getPostById(supabase: SupabaseClient, id: string, viewerId?: string): Promise<FeedItem | null> {
   const { data, error } = await supabase.from("activity_items").select(FEED_SELECT).eq("id", id).maybeSingle();
 
   if (error) {
     console.error("getPostById failed:", error.message);
     return null;
   }
+  if (!data) return null;
 
-  return data as unknown as FeedItem | null;
+  const [item] = await attachPollResults(supabase, [data as unknown as RawFeedRow], viewerId);
+  return item;
 }
 
 export const FEED_PAGE_SIZE = 10;
@@ -145,9 +205,20 @@ export const FOR_YOU_POOL_SIZE = 60;
  */
 export async function getFeedPage(
   supabase: SupabaseClient,
-  { filter, page = 0, pageSize = FEED_PAGE_SIZE }: { filter: FeedFilter; page?: number; pageSize?: number }
+  {
+    filter,
+    page = 0,
+    pageSize = FEED_PAGE_SIZE,
+    viewerId,
+  }: { filter: FeedFilter; page?: number; pageSize?: number; viewerId?: string }
 ): Promise<{ items: FeedItem[]; hasMore: boolean }> {
-  let query = supabase.from("activity_items").select(FEED_SELECT).order("created_at", { ascending: false });
+  // Community posts (community_id set) live only on their community's own
+  // page — keep them out of the global Feed.
+  let query = supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .is("community_id", null)
+    .order("created_at", { ascending: false });
 
   const postTypes = FILTER_POST_TYPES[filter];
   if (postTypes) {
@@ -165,18 +236,21 @@ export async function getFeedPage(
     return { items: [], hasMore: false };
   }
 
-  const rows = (data ?? []) as unknown as FeedItem[];
+  const rows = (data ?? []) as unknown as RawFeedRow[];
   const hasMore = rows.length > pageSize;
-  return { items: rows.slice(0, pageSize), hasMore };
+  const items = await attachPollResults(supabase, rows.slice(0, pageSize), viewerId);
+  return { items, hasMore };
 }
 
 export async function getForYouPool(
   supabase: SupabaseClient,
-  poolSize = FOR_YOU_POOL_SIZE
+  poolSize = FOR_YOU_POOL_SIZE,
+  viewerId?: string
 ): Promise<FeedItem[]> {
   const { data, error } = await supabase
     .from("activity_items")
     .select(FEED_SELECT)
+    .is("community_id", null)
     .order("created_at", { ascending: false })
     .limit(poolSize);
 
@@ -185,7 +259,31 @@ export async function getForYouPool(
     return [];
   }
 
-  return (data ?? []) as unknown as FeedItem[];
+  return attachPollResults(supabase, (data ?? []) as unknown as RawFeedRow[], viewerId);
+}
+
+/** Posts made inside one community's "Стрічка" tab — kept out of the
+ * global Feed (see getFeedPage/getForYouPool). Not paginated; a
+ * community's own feed is small enough at this scale to fetch in one go. */
+export async function getCommunityFeed(
+  supabase: SupabaseClient,
+  communityId: string,
+  limit = 50,
+  viewerId?: string
+): Promise<FeedItem[]> {
+  const { data, error } = await supabase
+    .from("activity_items")
+    .select(FEED_SELECT)
+    .eq("community_id", communityId)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("getCommunityFeed failed:", error.message);
+    return [];
+  }
+
+  return attachPollResults(supabase, (data ?? []) as unknown as RawFeedRow[], viewerId);
 }
 
 /**
@@ -212,12 +310,13 @@ export async function getSavedFeedPage(
     return { items: [], hasMore: false };
   }
 
-  const rows = ((data ?? []) as unknown as { activity_item: FeedItem | null }[])
+  const rows = ((data ?? []) as unknown as { activity_item: RawFeedRow | null }[])
     .map((row) => row.activity_item)
-    .filter((item): item is FeedItem => item !== null);
+    .filter((item): item is RawFeedRow => item !== null);
 
   const hasMore = rows.length > pageSize;
-  return { items: rows.slice(0, pageSize), hasMore };
+  const items = await attachPollResults(supabase, rows.slice(0, pageSize), userId);
+  return { items, hasMore };
 }
 
 function scorePost(item: FeedItem, tags: Set<string>): number {
@@ -274,6 +373,10 @@ export type CreatePostInput = {
   budget?: string | null;
   workFormat?: WorkFormat | null;
   ctaType?: CtaType | null;
+  /** Scopes the post to a community's own feed instead of the global one. */
+  communityId?: string | null;
+  /** 2–6 option labels — attaches a poll to the post. */
+  poll?: string[] | null;
 };
 
 export async function createPost(
@@ -281,17 +384,47 @@ export async function createPost(
   userId: string,
   input: CreatePostInput
 ): Promise<void> {
-  const { error } = await supabase.from("activity_items").insert({
-    user_id: userId,
-    type: "post",
-    post_type: input.postType,
-    body: input.body,
-    image_url: input.imageUrl ?? null,
-    category: input.category ?? null,
-    budget: input.budget ?? null,
-    work_format: input.workFormat ?? null,
-    cta_type: input.ctaType ?? null,
-  });
+  const { data, error } = await supabase
+    .from("activity_items")
+    .insert({
+      user_id: userId,
+      type: "post",
+      post_type: input.postType,
+      body: input.body,
+      image_url: input.imageUrl ?? null,
+      category: input.category ?? null,
+      budget: input.budget ?? null,
+      work_format: input.workFormat ?? null,
+      cta_type: input.ctaType ?? null,
+      community_id: input.communityId ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  if (input.poll && input.poll.length >= 2) {
+    const { error: pollError } = await supabase
+      .from("post_polls")
+      .insert({ activity_item_id: (data as { id: string }).id, options: input.poll });
+    if (pollError) {
+      throw new Error(pollError.message);
+    }
+  }
+}
+
+/** Casts or changes the current user's vote on a poll. */
+export async function votePoll(
+  supabase: SupabaseClient,
+  pollId: string,
+  userId: string,
+  optionIndex: number
+): Promise<void> {
+  const { error } = await supabase
+    .from("post_poll_votes")
+    .upsert({ poll_id: pollId, user_id: userId, option_index: optionIndex }, { onConflict: "poll_id,user_id" });
 
   if (error) {
     throw new Error(error.message);

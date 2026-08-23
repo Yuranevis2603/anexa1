@@ -86,7 +86,7 @@ export default function FeedView({
         let more: boolean;
 
         if (targetFilter === "for_you") {
-          const pool = personalizeFeed(await getForYouPool(supabase), profile).filter(
+          const pool = personalizeFeed(await getForYouPool(supabase, undefined, userId), profile).filter(
             (i) => !blockedIdsRef.current.has(i.user_id)
           );
           forYouPoolRef.current = pool;
@@ -97,7 +97,7 @@ export default function FeedView({
           pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         } else {
-          const result = await getFeedPage(supabase, { filter: targetFilter, page: 0 });
+          const result = await getFeedPage(supabase, { filter: targetFilter, page: 0, viewerId: userId });
           pageItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
           more = result.hasMore;
         }
@@ -153,7 +153,7 @@ export default function FeedView({
         nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       } else {
-        const result = await getFeedPage(supabase, { filter, page: nextPage });
+        const result = await getFeedPage(supabase, { filter, page: nextPage, viewerId: userId });
         nextItems = result.items.filter((i) => !blockedIdsRef.current.has(i.user_id));
         more = result.hasMore;
       }

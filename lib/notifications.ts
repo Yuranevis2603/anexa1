@@ -7,7 +7,8 @@ export type NotificationType =
   | "connection_request"
   | "connection_accepted"
   | "message"
-  | "review";
+  | "review"
+  | "referral_joined";
 
 export type Notification = {
   id: string;
@@ -134,6 +135,8 @@ export function describeNotification(n: Notification): { text: string; href: str
       };
     case "review":
       return { text: `Новий відгук від ${actor}`, href: "/dashboard/profile?tab=info" };
+    case "referral_joined":
+      return { text: `${actor} приєднався(лась) за вашим запрошенням`, href: "/dashboard/profile?tab=info" };
   }
 }
 

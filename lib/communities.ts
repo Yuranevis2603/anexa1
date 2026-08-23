@@ -1,22 +1,90 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type CommunityRule = { title: string; body: string };
+export type CommunityAccess = "public" | "request" | "private";
+export type CommunitySettings = {
+  approve: boolean;
+  moderatePosts: boolean;
+  memberEvents: boolean;
+  digest: boolean;
+};
+
+const DEFAULT_SETTINGS: CommunitySettings = {
+  approve: false,
+  moderatePosts: false,
+  memberEvents: true,
+  digest: true,
+};
+
 export type Community = {
   id: string;
   name: string;
   iconUrl: string | null;
+  description: string | null;
+  category: string | null;
+  rules: CommunityRule[];
   createdBy: string | null;
+  createdAt: string;
   memberCount: number;
   isMember: boolean;
+  access: CommunityAccess;
+  inviteCode: string | null;
+  settings: CommunitySettings;
+  archivedAt: string | null;
+  hasPendingRequest: boolean;
 };
+
+const COMMUNITY_COLUMNS =
+  "id, name, icon_url, description, category, rules, created_by, created_at, access, invite_code, settings, archived_at";
+
+type CommunityRow = {
+  id: string;
+  name: string;
+  icon_url: string | null;
+  description: string | null;
+  category: string | null;
+  rules: CommunityRule[] | null;
+  created_by: string | null;
+  created_at: string;
+  access: CommunityAccess;
+  invite_code: string | null;
+  settings: Partial<CommunitySettings> | null;
+  archived_at: string | null;
+};
+
+function toCommunity(row: CommunityRow, memberCount: number, isMember: boolean, hasPendingRequest = false): Community {
+  return {
+    id: row.id,
+    name: row.name,
+    iconUrl: row.icon_url,
+    description: row.description,
+    category: row.category,
+    rules: row.rules ?? [],
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+    memberCount,
+    isMember,
+    access: row.access,
+    inviteCode: row.invite_code,
+    settings: { ...DEFAULT_SETTINGS, ...(row.settings ?? {}) },
+    archivedAt: row.archived_at,
+    hasPendingRequest,
+  };
+}
 
 /** All communities with a member count and whether `userId` has joined.
  * Both tables are select-all for authenticated members (see schema.sql),
  * so this is two plain reads plus a client-side aggregation — no RPC
  * needed at this scale. */
 export async function getCommunities(supabase: SupabaseClient, userId: string): Promise<Community[]> {
-  const [{ data: communities, error: communitiesError }, { data: members, error: membersError }] = await Promise.all([
-    supabase.from("communities").select("id, name, icon_url, created_by").order("name"),
+  const [
+    { data: communities, error: communitiesError },
+    { data: members, error: membersError },
+    { data: pending, error: pendingError },
+  ] = await Promise.all([
+    supabase.from("communities").select(COMMUNITY_COLUMNS).order("name"),
     supabase.from("community_members").select("community_id, user_id"),
+    supabase.from("community_join_requests").select("community_id").eq("user_id", userId),
   ]);
 
   if (communitiesError) {
@@ -26,6 +94,9 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
   if (membersError) {
     console.error("getCommunities (members) failed:", membersError.message);
   }
+  if (pendingError) {
+    console.error("getCommunities (pending) failed:", pendingError.message);
+  }
 
   const rows = (members ?? []) as { community_id: string; user_id: string }[];
   const counts = new Map<string, number>();
@@ -34,17 +105,41 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
     counts.set(row.community_id, (counts.get(row.community_id) ?? 0) + 1);
     if (row.user_id === userId) mine.add(row.community_id);
   }
+  const pendingIds = new Set(((pending ?? []) as { community_id: string }[]).map((p) => p.community_id));
 
-  return (
-    (communities ?? []) as { id: string; name: string; icon_url: string | null; created_by: string | null }[]
-  ).map((c) => ({
-    id: c.id,
-    name: c.name,
-    iconUrl: c.icon_url,
-    createdBy: c.created_by,
-    memberCount: counts.get(c.id) ?? 0,
-    isMember: mine.has(c.id),
-  }));
+  return ((communities ?? []) as CommunityRow[]).map((c) =>
+    toCommunity(c, counts.get(c.id) ?? 0, mine.has(c.id), pendingIds.has(c.id))
+  );
+}
+
+/** One community by id, with the same member count/membership shape as
+ * getCommunities — for the community detail page header. Null if the
+ * community doesn't exist. */
+export async function getCommunity(
+  supabase: SupabaseClient,
+  communityId: string,
+  userId: string
+): Promise<Community | null> {
+  const [
+    { data: community, error: communityError },
+    { data: members, error: membersError },
+    { data: pending },
+  ] = await Promise.all([
+    supabase.from("communities").select(COMMUNITY_COLUMNS).eq("id", communityId).maybeSingle(),
+    supabase.from("community_members").select("user_id").eq("community_id", communityId),
+    supabase.from("community_join_requests").select("id").eq("community_id", communityId).eq("user_id", userId).maybeSingle(),
+  ]);
+
+  if (communityError || !community) {
+    if (communityError) console.error("getCommunity failed:", communityError.message);
+    return null;
+  }
+  if (membersError) {
+    console.error("getCommunity (members) failed:", membersError.message);
+  }
+
+  const rows = (members ?? []) as { user_id: string }[];
+  return toCommunity(community as CommunityRow, rows.length, rows.some((r) => r.user_id === userId), Boolean(pending));
 }
 
 /** Creates a community owned by `userId` (the created_by unique index caps
@@ -53,13 +148,25 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
 export async function createCommunity(
   supabase: SupabaseClient,
   userId: string,
-  name: string,
-  iconUrl: string | null
+  fields: {
+    name: string;
+    iconUrl: string | null;
+    description?: string | null;
+    category?: string | null;
+    access?: CommunityAccess;
+  }
 ): Promise<Community> {
   const { data, error } = await supabase
     .from("communities")
-    .insert({ name, icon_url: iconUrl, created_by: userId })
-    .select("id, name, icon_url, created_by")
+    .insert({
+      name: fields.name,
+      icon_url: fields.iconUrl,
+      description: fields.description ?? null,
+      category: fields.category ?? null,
+      access: fields.access ?? "public",
+      created_by: userId,
+    })
+    .select(COMMUNITY_COLUMNS)
     .single();
 
   if (error) {
@@ -69,22 +176,73 @@ export async function createCommunity(
     throw new Error(error.message);
   }
 
-  const community = data as { id: string; name: string; icon_url: string | null; created_by: string | null };
+  await joinCommunity(supabase, userId, (data as CommunityRow).id);
 
-  await joinCommunity(supabase, userId, community.id);
+  return toCommunity(data as CommunityRow, 1, true);
+}
 
-  return {
-    id: community.id,
-    name: community.name,
-    iconUrl: community.icon_url,
-    createdBy: community.created_by,
-    memberCount: 1,
-    isMember: true,
-  };
+export type CommunityEditableFields = {
+  name: string;
+  description: string | null;
+  category: string | null;
+  rules: CommunityRule[];
+};
+
+/** Owner-only edit ("Керувати спільнотою") — RLS enforces created_by = auth.uid(). */
+export async function updateCommunity(
+  supabase: SupabaseClient,
+  communityId: string,
+  fields: CommunityEditableFields
+): Promise<CommunityEditableFields> {
+  const { error } = await supabase
+    .from("communities")
+    .update({
+      name: fields.name,
+      description: fields.description,
+      category: fields.category,
+      rules: fields.rules,
+    })
+    .eq("id", communityId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return fields;
 }
 
 export async function joinCommunity(supabase: SupabaseClient, userId: string, communityId: string): Promise<void> {
   const { error } = await supabase.from("community_members").insert({ community_id: communityId, user_id: userId });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Used for `access: "request"` communities — a manager decides from the
+ * "Заявки" tab instead of joining instantly. */
+export async function requestToJoinCommunity(
+  supabase: SupabaseClient,
+  userId: string,
+  communityId: string,
+  note?: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("community_join_requests")
+    .insert({ community_id: communityId, user_id: userId, note: note?.trim() || null });
+  if (error) {
+    if (error.code === "23505") {
+      throw new Error("Заявку вже подано.");
+    }
+    throw new Error(error.message);
+  }
+}
+
+export async function cancelJoinRequest(supabase: SupabaseClient, userId: string, communityId: string): Promise<void> {
+  const { error } = await supabase
+    .from("community_join_requests")
+    .delete()
+    .eq("community_id", communityId)
+    .eq("user_id", userId);
   if (error) {
     throw new Error(error.message);
   }
@@ -96,6 +254,219 @@ export async function leaveCommunity(supabase: SupabaseClient, userId: string, c
     .delete()
     .eq("community_id", communityId)
     .eq("user_id", userId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Community-level staff role — separate from `roleTitle` (the member's own
+ * job title, e.g. "CEO"). Owner isn't a value here; it's derived from
+ * Community.createdBy and exposed via `isOwner`. */
+export type CommunityRoleTier = "admin" | "moderator" | "member";
+
+export type CommunityMember = {
+  userId: string;
+  fullName: string;
+  avatarUrl: string | null;
+  roleTitle: string | null;
+  company: string | null;
+  isOwner: boolean;
+  communityRole: CommunityRoleTier;
+  joinedAt: string;
+};
+
+/** Member directory for the "Учасники" tab — owner first, then by join
+ * date. `ownerId` comes from the already-fetched Community (createdBy),
+ * so this doesn't need its own community lookup. */
+export async function getCommunityMembers(
+  supabase: SupabaseClient,
+  communityId: string,
+  ownerId: string | null
+): Promise<CommunityMember[]> {
+  const { data, error } = await supabase
+    .from("community_members")
+    .select(
+      "user_id, joined_at, role, profile:profiles!community_members_user_id_fkey(full_name, avatar_url, role_title, company)"
+    )
+    .eq("community_id", communityId)
+    .order("joined_at", { ascending: true });
+
+  if (error) {
+    console.error("getCommunityMembers failed:", error.message);
+    return [];
+  }
+
+  const rows = (data ?? []) as unknown as {
+    user_id: string;
+    joined_at: string;
+    role: CommunityRoleTier;
+    profile: { full_name: string; avatar_url: string | null; role_title: string | null; company: string | null } | null;
+  }[];
+
+  const members = rows.map((r) => ({
+    userId: r.user_id,
+    fullName: r.profile?.full_name ?? "Учасник ANEXA",
+    avatarUrl: r.profile?.avatar_url ?? null,
+    roleTitle: r.profile?.role_title ?? null,
+    company: r.profile?.company ?? null,
+    isOwner: r.user_id === ownerId,
+    communityRole: r.role,
+    joinedAt: r.joined_at,
+  }));
+
+  members.sort((a, b) => (a.isOwner === b.isOwner ? 0 : a.isOwner ? -1 : 1));
+  return members;
+}
+
+/** Owner-only — RLS (community_members_update_role_owner) enforces it. */
+export async function setMemberRole(
+  supabase: SupabaseClient,
+  communityId: string,
+  userId: string,
+  role: CommunityRoleTier
+): Promise<void> {
+  const { error } = await supabase
+    .from("community_members")
+    .update({ role })
+    .eq("community_id", communityId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Removes a member from the community. RLS restricts this to the owner
+ * (any member/admin) or an Admin (plain members only — not other admins,
+ * not the owner). */
+export async function kickMember(supabase: SupabaseClient, communityId: string, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("community_members")
+    .delete()
+    .eq("community_id", communityId)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Total post count for the sidebar's "Постів" stat. */
+export async function getCommunityPostCount(supabase: SupabaseClient, communityId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from("activity_items")
+    .select("id", { count: "exact", head: true })
+    .eq("community_id", communityId);
+
+  if (error) {
+    console.error("getCommunityPostCount failed:", error.message);
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
+/** Per-member contribution count (posts + discussion threads + replies) for
+ * the Members tab's "N внесків" line and the sidebar's "Найактивніші"
+ * leaderboard. Three lightweight id-only reads, aggregated client-side —
+ * same approach as getCommunities' member counts. */
+export async function getMemberActivityCounts(
+  supabase: SupabaseClient,
+  communityId: string
+): Promise<Map<string, number>> {
+  const [{ data: posts, error: postsError }, { data: threads, error: threadsError }] = await Promise.all([
+    supabase.from("activity_items").select("user_id").eq("community_id", communityId),
+    supabase.from("discussion_threads").select("id, user_id").eq("community_id", communityId),
+  ]);
+
+  if (postsError) console.error("getMemberActivityCounts (posts) failed:", postsError.message);
+  if (threadsError) console.error("getMemberActivityCounts (threads) failed:", threadsError.message);
+
+  const threadRows = (threads ?? []) as { id: string; user_id: string }[];
+  const threadIds = threadRows.map((t) => t.id);
+
+  const { data: replies, error: repliesError } =
+    threadIds.length > 0
+      ? await supabase.from("discussion_replies").select("user_id").in("thread_id", threadIds)
+      : { data: [] as { user_id: string }[], error: null };
+  if (repliesError) console.error("getMemberActivityCounts (replies) failed:", repliesError.message);
+
+  const counts = new Map<string, number>();
+  const bump = (userId: string) => counts.set(userId, (counts.get(userId) ?? 0) + 1);
+
+  for (const row of (posts ?? []) as { user_id: string }[]) bump(row.user_id);
+  for (const row of threadRows) bump(row.user_id);
+  for (const row of (replies ?? []) as { user_id: string }[]) bump(row.user_id);
+
+  return counts;
+}
+
+/** Owner/Admin-only (communities_update_admins). Scoped update — unlike
+ * `updateCommunity`, doesn't require the caller to also resend rules. */
+export async function updateCommunityProfile(
+  supabase: SupabaseClient,
+  communityId: string,
+  fields: { name: string; description: string | null; category: string | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from("communities")
+    .update({ name: fields.name, description: fields.description, category: fields.category })
+    .eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Owner/Admin-only (communities_update_admins). */
+export async function updateCommunityRules(supabase: SupabaseClient, communityId: string, rules: CommunityRule[]): Promise<void> {
+  const { error } = await supabase.from("communities").update({ rules }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Owner/Admin-only (communities_update_admins) — access mode, invite link
+ * regeneration, and publish-settings toggles, gathered in the "Керувати →
+ * Доступ" tab. */
+export async function updateCommunityAccess(supabase: SupabaseClient, communityId: string, access: CommunityAccess): Promise<void> {
+  const { error } = await supabase.from("communities").update({ access }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function updateCommunitySettings(supabase: SupabaseClient, communityId: string, settings: CommunitySettings): Promise<void> {
+  const { error } = await supabase.from("communities").update({ settings }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function regenerateInviteCode(supabase: SupabaseClient, communityId: string): Promise<string> {
+  const code = Math.random().toString(36).slice(2, 8);
+  const { error } = await supabase.from("communities").update({ invite_code: code }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+  return code;
+}
+
+/** Owner-only (communities_delete_owner doesn't apply here — archiving is
+ * just an update). Closes posting/joining but keeps history. */
+export async function archiveCommunity(supabase: SupabaseClient, communityId: string): Promise<void> {
+  const { error } = await supabase.from("communities").update({ archived_at: new Date().toISOString() }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Owner-only. Cascades to memberships, join requests, bans and the audit
+ * log. Community-scoped events/posts/discussions/livestreams reference
+ * communities.id without cascade, so deleting a community that has any of
+ * those fails with a foreign-key error instead of silently wiping its
+ * content history — archive it instead if it's not empty. */
+export async function deleteCommunity(supabase: SupabaseClient, communityId: string): Promise<void> {
+  const { error } = await supabase.from("communities").delete().eq("id", communityId);
   if (error) {
     throw new Error(error.message);
   }

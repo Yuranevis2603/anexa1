@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ImagePlus, Loader2, Send, X } from "lucide-react";
+import { BarChart3, ImagePlus, Loader2, Plus, Send, Trash2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import ModalPortal from "@/components/ui/ModalPortal";
@@ -21,11 +21,14 @@ export default function CreatePostModal({
   open,
   onClose,
   onCreated,
+  communityId,
 }: {
   userId: string;
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  /** Posts into a community's own feed instead of the global Feed. */
+  communityId?: string;
 }) {
   const { showToast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +44,9 @@ export default function CreatePostModal({
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
 
+  const [pollOpen, setPollOpen] = useState(false);
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -54,7 +60,21 @@ export default function CreatePostModal({
     setShowOptional(false);
     setImageFile(null);
     setImagePreview(null);
+    setPollOpen(false);
+    setPollOptions(["", ""]);
     setError(null);
+  }
+
+  function updatePollOption(index: number, value: string) {
+    setPollOptions((prev) => prev.map((o, i) => (i === index ? value : o)));
+  }
+
+  function addPollOption() {
+    setPollOptions((prev) => (prev.length < 6 ? [...prev, ""] : prev));
+  }
+
+  function removePollOption(index: number) {
+    setPollOptions((prev) => (prev.length > 2 ? prev.filter((_, i) => i !== index) : prev));
   }
 
   function handleClose() {
@@ -92,6 +112,11 @@ export default function CreatePostModal({
       setError("Напишіть текст поста.");
       return;
     }
+    const pollLabels = pollOptions.map((o) => o.trim()).filter(Boolean);
+    if (pollOpen && pollLabels.length < 2) {
+      setError("Додайте щонайменше два варіанти опитування.");
+      return;
+    }
 
     setSubmitting(true);
     setError(null);
@@ -111,6 +136,8 @@ export default function CreatePostModal({
         budget: budget.trim() || null,
         workFormat: workFormat || null,
         ctaType: ctaType || null,
+        communityId,
+        poll: pollOpen ? pollLabels : null,
       });
 
       showToast("success", "Пост опубліковано.");
@@ -200,16 +227,65 @@ export default function CreatePostModal({
               </button>
             </div>
           ) : (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-border-strong px-3 py-2.5 text-[12.5px] text-ink-secondary transition-colors hover:bg-white/[0.04]"
-            >
-              <ImagePlus size={16} />
-              Додати зображення
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-2 text-[12px] text-ink-secondary transition-colors hover:bg-white/[0.04]"
+              >
+                <ImagePlus size={15} className="text-purple-soft" />
+                Фото
+              </button>
+              <button
+                type="button"
+                onClick={() => setPollOpen((s) => !s)}
+                aria-pressed={pollOpen}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-[12px] transition-colors ${
+                  pollOpen ? "border-purple/50 bg-purple/10 text-ink-primary" : "border-border-subtle text-ink-secondary hover:bg-white/[0.04]"
+                }`}
+              >
+                <BarChart3 size={15} className="text-gold" />
+                Опитування
+              </button>
+            </div>
           )}
           <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+
+          {pollOpen ? (
+            <div className="flex flex-col gap-2 rounded-xl border border-border-subtle p-3.5">
+              {pollOptions.map((option, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={option}
+                    onChange={(e) => updatePollOption(i, e.target.value)}
+                    placeholder={`Варіант ${i + 1}`}
+                    className="w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[13px] text-ink-primary placeholder:text-ink-tertiary focus:border-purple/40 focus:outline-none"
+                  />
+                  {pollOptions.length > 2 ? (
+                    <button
+                      type="button"
+                      onClick={() => removePollOption(i)}
+                      aria-label="Прибрати варіант"
+                      className="shrink-0 rounded-lg p-2 text-ink-tertiary transition-colors hover:bg-white/[0.06] hover:text-danger"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  ) : null}
+                </div>
+              ))}
+              {pollOptions.length < 6 ? (
+                <button
+                  type="button"
+                  onClick={addPollOption}
+                  className="flex items-center gap-1.5 self-start text-[12px] font-medium text-purple-soft transition-colors hover:text-purple"
+                >
+                  <Plus size={13} />
+                  Додати варіант
+                </button>
+              ) : null}
+            </div>
+          ) : null}
 
           <button
             type="button"

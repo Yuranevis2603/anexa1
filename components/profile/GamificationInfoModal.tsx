@@ -69,7 +69,8 @@ export default function GamificationInfoModal({ levels, onClose }: { levels: Lev
             <h3 className="text-[13px] font-semibold text-ink-primary">Рівень</h3>
           </div>
           <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-secondary">
-            Рівень рахується автоматично від суми AX — окремо нараховувати його не треба.
+            Рівень рахується від усього AX, зароблено за весь час, — окремо нараховувати його не треба, і він не
+            падає, навіть якщо баланс витрачено.
           </p>
           {levels.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">

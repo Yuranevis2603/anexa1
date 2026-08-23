@@ -23,7 +23,14 @@ function passwordScore(v: string) {
 const strengthColors = ["#F0655F", "#F0655F", "#E8A23C", "#4FD1A5"];
 const strengthText = ["Занадто слабкий", "Слабкий", "Добре", "Надійний"];
 
-export default function AuthCard({ initialView = "login" }: { initialView?: View }) {
+export default function AuthCard({
+  initialView = "login",
+  initialInvite,
+}: {
+  initialView?: View;
+  /** Prefills the invite field from a referral link's ?invite= param. */
+  initialInvite?: string;
+}) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
 
@@ -40,7 +47,7 @@ export default function AuthCard({ initialView = "login" }: { initialView?: View
   const [regFirst, setRegFirst] = useState("");
   const [regLast, setRegLast] = useState("");
   const [regEmail, setRegEmail] = useState("");
-  const [regInvite, setRegInvite] = useState("");
+  const [regInvite, setRegInvite] = useState(initialInvite ?? "");
   const [regPassword, setRegPassword] = useState("");
   const [regConfirm, setRegConfirm] = useState("");
   const [regShowPw, setRegShowPw] = useState(false);

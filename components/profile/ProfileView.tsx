@@ -145,6 +145,7 @@ export default function ProfileView({
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
   const [stats, setStats] = useState<ProfileStats>({
     ax_points: 0,
+    ax_balance: 0,
     reputation: null,
     review_count: 0,
     level: 1,
@@ -181,7 +182,7 @@ export default function ProfileView({
       const [projectsData, reviewsData, activityData, statsData, levelsData] = await Promise.all([
         getProjects(supabase, current.id),
         getReviews(supabase, current.id),
-        getUserActivity(supabase, current.id),
+        getUserActivity(supabase, current.id, undefined, viewerId),
         getProfileStats(supabase, current.id),
         getLevels(supabase),
       ]);
@@ -220,6 +221,7 @@ export default function ProfileView({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current.id]);
+
 
   // Only the owner has a real ax_points value to compute progress-to-next-level
   // from (see getProfileStats) — for anyone else, show the accurate level/title
@@ -515,7 +517,7 @@ export default function ProfileView({
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">AX</p>
-              <p className="font-display text-lg font-semibold leading-tight text-ink-primary">{stats.ax_points.toLocaleString("uk-UA")}</p>
+              <p className="font-display text-lg font-semibold leading-tight text-ink-primary">{stats.ax_balance.toLocaleString("uk-UA")}</p>
             </div>
           </button>
         ) : null}

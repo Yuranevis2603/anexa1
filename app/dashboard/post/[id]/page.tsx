@@ -22,7 +22,7 @@ export default async function PostPage({
     redirect("/login");
   }
 
-  const post = await getPostById(supabase, params.id);
+  const post = await getPostById(supabase, params.id, user.id);
 
   if (!post) {
     notFound();

@@ -28,11 +28,11 @@ export default function CommunitiesView({
   const myCount = communities.filter((c) => c.isMember).length;
   const hasOwnCommunity = communities.some((c) => c.createdBy === userId);
 
-  function handleChanged(communityId: string, isMember: boolean) {
+  function handleChanged(communityId: string, isMember: boolean, hasPendingRequest = false) {
     setCommunities((prev) =>
       prev.map((c) =>
         c.id === communityId
-          ? { ...c, isMember, memberCount: c.memberCount + (isMember ? 1 : -1) }
+          ? { ...c, isMember, hasPendingRequest, memberCount: c.memberCount + (isMember ? 1 : c.isMember ? -1 : 0) }
           : c
       )
     );
