@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   icons: {
     icon: "/anexa-logo.png",
+    apple: "/anexa-logo.png",
+  },
+  appleWebApp: {
+    title: "Anexa Club",
   },
   openGraph: {
     title: TITLE,
