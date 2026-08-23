@@ -1,10 +1,62 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { CommunityRoleTier } from "./communities";
 
 async function logAudit(supabase: SupabaseClient, communityId: string, actorId: string, action: string): Promise<void> {
   const { error } = await supabase.from("community_audit_log").insert({ community_id: communityId, actor_id: actorId, action });
   if (error) {
     console.error("logAudit failed:", error.message);
   }
+}
+
+// ============================================================================
+// Overview
+// ============================================================================
+
+export type OverviewStats = {
+  memberCount: number;
+  pendingRequests: number;
+  joinedLast7Days: number;
+  roleCounts: { owner: number; admin: number; moderator: number; member: number };
+  joinsByDay: { label: string; count: number }[];
+};
+
+/** `createdBy` overrides the creator's own row to "owner" for the role
+ * breakdown — their stored `role` is just whatever admin/moderator/member
+ * value it defaults to (ownership isn't a stored role, see is_community_owner). */
+export async function getOverviewStats(supabase: SupabaseClient, communityId: string, createdBy: string | null): Promise<OverviewStats> {
+  const [{ data: members, error }, { count: pendingRequests }] = await Promise.all([
+    supabase.from("community_members").select("user_id, role, joined_at").eq("community_id", communityId),
+    supabase.from("community_join_requests").select("id", { count: "exact", head: true }).eq("community_id", communityId),
+  ]);
+
+  if (error) {
+    console.error("getOverviewStats failed:", error.message);
+  }
+
+  const rows = (members ?? []) as { user_id: string; role: CommunityRoleTier; joined_at: string }[];
+  const roleCounts = { owner: 0, admin: 0, moderator: 0, member: 0 };
+  const dayCounts = new Map<string, number>();
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+  let joinedLast7Days = 0;
+
+  for (const row of rows) {
+    const key = row.user_id === createdBy ? "owner" : row.role;
+    roleCounts[key] += 1;
+    const joinedAt = new Date(row.joined_at).getTime();
+    if (now - joinedAt <= 7 * DAY) joinedLast7Days += 1;
+    const dayKey = row.joined_at.slice(0, 10);
+    dayCounts.set(dayKey, (dayCounts.get(dayKey) ?? 0) + 1);
+  }
+
+  const joinsByDay: { label: string; count: number }[] = [];
+  for (let i = 13; i >= 0; i--) {
+    const d = new Date(now - i * DAY);
+    const key = d.toISOString().slice(0, 10);
+    joinsByDay.push({ label: String(d.getDate()), count: dayCounts.get(key) ?? 0 });
+  }
+
+  return { memberCount: rows.length, pendingRequests: pendingRequests ?? 0, joinedLast7Days, roleCounts, joinsByDay };
 }
 
 // ============================================================================
@@ -206,6 +258,17 @@ export async function getAuditLog(supabase: SupabaseClient, communityId: string)
     createdAt: r.created_at,
   }));
 }
+
+/** Viewer-facing role for the admin panel — "owner" is derived from
+ * Community.createdBy, never a stored community_members.role value. */
+export type CommunityRole = "owner" | CommunityRoleTier;
+
+export const ROLE_UA: Record<CommunityRole, string> = {
+  owner: "Власник",
+  admin: "Адмін",
+  moderator: "Модератор",
+  member: "Учасник",
+};
 
 export function timeAgo(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();

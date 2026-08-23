@@ -401,6 +401,30 @@ export async function getMemberActivityCounts(
   return counts;
 }
 
+/** Owner/Admin-only (communities_update_admins). Scoped update — unlike
+ * `updateCommunity`, doesn't require the caller to also resend rules. */
+export async function updateCommunityProfile(
+  supabase: SupabaseClient,
+  communityId: string,
+  fields: { name: string; description: string | null; category: string | null }
+): Promise<void> {
+  const { error } = await supabase
+    .from("communities")
+    .update({ name: fields.name, description: fields.description, category: fields.category })
+    .eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Owner/Admin-only (communities_update_admins). */
+export async function updateCommunityRules(supabase: SupabaseClient, communityId: string, rules: CommunityRule[]): Promise<void> {
+  const { error } = await supabase.from("communities").update({ rules }).eq("id", communityId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 /** Owner/Admin-only (communities_update_admins) — access mode, invite link
  * regeneration, and publish-settings toggles, gathered in the "Керувати →
  * Доступ" tab. */

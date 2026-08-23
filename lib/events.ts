@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+export type EventStatus = "draft" | "published";
+
 export type EventItem = {
   id: string;
   title: string;
@@ -8,6 +10,7 @@ export type EventItem = {
   eventDate: string;
   createdBy: string | null;
   communityId: string | null;
+  status: EventStatus;
   attendeeCount: number;
   isRegistered: boolean;
 };
@@ -20,7 +23,10 @@ type EventRow = {
   event_date: string;
   created_by: string | null;
   community_id: string | null;
+  status: EventStatus;
 };
+
+const EVENT_COLUMNS = "id, title, description, location, event_date, created_by, community_id, status";
 
 /** All events (optionally scoped to one community) with an attendee count
  * and whether `userId` is registered. Both tables are select-all for
@@ -29,14 +35,16 @@ type EventRow = {
 export async function getEvents(
   supabase: SupabaseClient,
   userId: string,
-  communityId?: string
+  communityId?: string,
+  /** Community staff viewing the admin panel also need to see drafts. */
+  includeDrafts = false
 ): Promise<EventItem[]> {
-  let query = supabase
-    .from("events")
-    .select("id, title, description, location, event_date, created_by, community_id")
-    .order("event_date", { ascending: true });
+  let query = supabase.from("events").select(EVENT_COLUMNS).order("event_date", { ascending: true });
   if (communityId) {
     query = query.eq("community_id", communityId);
+  }
+  if (!includeDrafts) {
+    query = query.eq("status", "published");
   }
 
   const [{ data: events, error: eventsError }, { data: regs, error: regsError }] = await Promise.all([
@@ -68,6 +76,7 @@ export async function getEvents(
     eventDate: e.event_date,
     createdBy: e.created_by,
     communityId: e.community_id,
+    status: e.status,
     attendeeCount: counts.get(e.id) ?? 0,
     isRegistered: mine.has(e.id),
   }));
@@ -78,7 +87,14 @@ export async function getEvents(
 export async function createEvent(
   supabase: SupabaseClient,
   userId: string,
-  fields: { title: string; description: string | null; location: string | null; eventDate: string; communityId?: string | null }
+  fields: {
+    title: string;
+    description: string | null;
+    location: string | null;
+    eventDate: string;
+    communityId?: string | null;
+    status?: EventStatus;
+  }
 ): Promise<EventItem> {
   const { data, error } = await supabase
     .from("events")
@@ -89,8 +105,9 @@ export async function createEvent(
       event_date: fields.eventDate,
       created_by: userId,
       community_id: fields.communityId ?? null,
+      status: fields.status ?? "published",
     })
-    .select("id, title, description, location, event_date, created_by, community_id")
+    .select(EVENT_COLUMNS)
     .single();
 
   if (error) {
@@ -109,9 +126,39 @@ export async function createEvent(
     eventDate: event.event_date,
     createdBy: event.created_by,
     communityId: event.community_id,
+    status: event.status,
     attendeeCount: 1,
     isRegistered: true,
   };
+}
+
+/** Owner/creator or the community's owner/admin — RLS (events_update_own /
+ * events_manage_community_admins) enforces it. */
+export async function updateEvent(
+  supabase: SupabaseClient,
+  eventId: string,
+  fields: { title: string; description: string | null; location: string | null; eventDate: string; status: EventStatus }
+): Promise<void> {
+  const { error } = await supabase
+    .from("events")
+    .update({
+      title: fields.title,
+      description: fields.description,
+      location: fields.location,
+      event_date: fields.eventDate,
+      status: fields.status,
+    })
+    .eq("id", eventId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+export async function deleteEvent(supabase: SupabaseClient, eventId: string): Promise<void> {
+  const { error } = await supabase.from("events").delete().eq("id", eventId);
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 export async function registerForEvent(supabase: SupabaseClient, userId: string, eventId: string): Promise<void> {
