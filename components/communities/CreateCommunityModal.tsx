@@ -4,9 +4,15 @@ import { useRef, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { uploadAvatar } from "@/lib/profile";
-import { createCommunity, type Community } from "@/lib/communities";
+import { createCommunity, type Community, type CommunityAccess } from "@/lib/communities";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
+
+const ACCESS_OPTIONS: { value: CommunityAccess; label: string }[] = [
+  { value: "public", label: "Публічна" },
+  { value: "request", label: "За заявкою" },
+  { value: "private", label: "Приватна" },
+];
 
 export default function CreateCommunityModal({
   userId,
@@ -21,6 +27,7 @@ export default function CreateCommunityModal({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState("");
+  const [access, setAccess] = useState<CommunityAccess>("public");
   const [iconFile, setIconFile] = useState<File | null>(null);
   const [iconPreview, setIconPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -67,6 +74,7 @@ export default function CreateCommunityModal({
         iconUrl,
         description: description.trim() || null,
         category: category.trim() || null,
+        access,
       });
       onCreated(community);
     } catch (err) {
@@ -159,6 +167,24 @@ export default function CreateCommunityModal({
               placeholder="Для кого ця спільнота і про що в ній говорять..."
               className="w-full resize-none rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2.5 text-[13.5px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
             />
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Доступ</label>
+            <div className="flex gap-1.5 rounded-lg border border-border-subtle bg-white/[0.03] p-1">
+              {ACCESS_OPTIONS.map((o) => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setAccess(o.value)}
+                  className={`flex-1 rounded-md py-1.5 text-[12px] font-medium transition-colors ${
+                    access === o.value ? "bg-grad-purple-blue text-white" : "text-ink-tertiary"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+            </div>
           </div>
 
           {error ? <p className="text-[12.5px] text-danger">{error}</p> : null}

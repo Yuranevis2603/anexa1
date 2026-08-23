@@ -1,21 +1,43 @@
 "use client";
 
 import { useState } from "react";
-import { Loader2, MoreVertical, Plus, Settings2, Trash2, Users, X } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Check, Copy, Loader2, MoreVertical, Plus, Settings2, ShieldAlert, Trash2, Users, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  archiveCommunity,
+  deleteCommunity,
   kickMember,
+  regenerateInviteCode,
   setMemberRole,
   updateCommunity,
+  updateCommunityAccess,
+  updateCommunitySettings,
   type Community,
+  type CommunityAccess,
   type CommunityMember,
   type CommunityRoleTier,
   type CommunityRule,
+  type CommunitySettings,
 } from "@/lib/communities";
+import { useToast } from "@/components/ui/ToastProvider";
 import ModalPortal from "@/components/ui/ModalPortal";
 import Avatar from "@/components/ui/Avatar";
 
-type PanelTab = "settings" | "members";
+type PanelTab = "settings" | "access" | "members";
+
+const ACCESS_DEFS: { key: CommunityAccess; label: string; hint: string }[] = [
+  { key: "public", label: "Публічна", hint: "Будь-хто бачить контент і приєднується одним кліком." },
+  { key: "request", label: "За заявкою", hint: "Контент видно, вступ — після схвалення в розділі «Заявки»." },
+  { key: "private", label: "Приватна", hint: "Спільнота прихована, вступ лише за посиланням-запрошенням." },
+];
+
+const TOGGLE_DEFS: { key: keyof CommunitySettings; label: string; hint: string }[] = [
+  { key: "approve", label: "Схвалювати заявки вручну", hint: "Кожен новий учасник проходить через чергу." },
+  { key: "moderatePosts", label: "Премодерація постів", hint: "Пости зʼявляються у стрічці лише після перевірки." },
+  { key: "memberEvents", label: "Учасники можуть створювати події", hint: "Без премодерації, але з позначкою автора." },
+  { key: "digest", label: "Щотижневий дайджест", hint: "Автоматичний лист із головними обговореннями тижня." },
+];
 
 export default function EditCommunityModal({
   community,
@@ -30,13 +52,15 @@ export default function EditCommunityModal({
   community: Community;
   members: CommunityMember[];
   isOwner: boolean;
-  /** Owner or Admin — gates the "Учасники" tab; "Налаштування" stays owner-only. */
+  /** Owner or Admin — gates the "Учасники" tab; "Налаштування"/"Доступ" stay owner-only. */
   isAdmin: boolean;
   onClose: () => void;
   onSaved: (fields: { name: string; description: string | null; category: string | null; rules: CommunityRule[] }) => void;
   onRoleChanged: (userId: string, role: CommunityRoleTier) => void;
   onMemberKicked: (userId: string) => void;
 }) {
+  const router = useRouter();
+  const { showToast } = useToast();
   const [tab, setTab] = useState<PanelTab>(isOwner ? "settings" : "members");
 
   const [name, setName] = useState(community.name);
@@ -46,6 +70,12 @@ export default function EditCommunityModal({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [access, setAccess] = useState<CommunityAccess>(community.access);
+  const [inviteCode, setInviteCode] = useState(community.inviteCode ?? "");
+  const [settings, setSettings] = useState<CommunitySettings>(community.settings);
+  const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [memberMenuFor, setMemberMenuFor] = useState<string | null>(null);
   const [memberActionPending, setMemberActionPending] = useState<string | null>(null);
@@ -126,6 +156,75 @@ export default function EditCommunityModal({
     }
   }
 
+  async function changeAccess(next: CommunityAccess) {
+    const prev = access;
+    setAccess(next);
+    try {
+      await updateCommunityAccess(createClient(), community.id, next);
+    } catch (err) {
+      setAccess(prev);
+      showToast("error", "Не вдалося змінити доступ.");
+      console.error("updateCommunityAccess failed:", err);
+    }
+  }
+
+  function copyInvite() {
+    navigator.clipboard.writeText(`${window.location.origin}/dashboard/communities/join/${inviteCode}`).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1600);
+  }
+
+  async function regenerateInvite() {
+    try {
+      setInviteCode(await regenerateInviteCode(createClient(), community.id));
+    } catch (err) {
+      showToast("error", "Не вдалося оновити посилання.");
+      console.error("regenerateInviteCode failed:", err);
+    }
+  }
+
+  async function toggleFlag(key: keyof CommunitySettings) {
+    const prev = settings;
+    const next = { ...settings, [key]: !settings[key] };
+    setSettings(next);
+    try {
+      await updateCommunitySettings(createClient(), community.id, next);
+    } catch (err) {
+      setSettings(prev);
+      showToast("error", "Не вдалося зберегти.");
+      console.error("updateCommunitySettings failed:", err);
+    }
+  }
+
+  async function handleArchive() {
+    if (!window.confirm("Архівувати спільноту? Публікації та вступ буде закрито, історія збережеться.")) return;
+    try {
+      await archiveCommunity(createClient(), community.id);
+      showToast("success", "Спільноту архівовано.");
+      onClose();
+    } catch (err) {
+      showToast("error", "Не вдалося архівувати спільноту.");
+      console.error("archiveCommunity failed:", err);
+    }
+  }
+
+  async function handleDelete() {
+    if (!window.confirm(`Видалити спільноту «${community.name}» безповоротно?`)) return;
+    setDeleting(true);
+    try {
+      await deleteCommunity(createClient(), community.id);
+      showToast("success", "Спільноту видалено.");
+      router.push("/dashboard/communities");
+    } catch (err) {
+      showToast(
+        "error",
+        "Не вдалося видалити — у спільноті ще є пости, обговорення чи події. Спробуйте архівувати замість цього."
+      );
+      console.error("deleteCommunity failed:", err);
+      setDeleting(false);
+    }
+  }
+
   return (
     <ModalPortal>
       <div
@@ -160,6 +259,16 @@ export default function EditCommunityModal({
               >
                 <Settings2 size={13} />
                 Налаштування
+              </button>
+              <button
+                type="button"
+                onClick={() => setTab("access")}
+                className={`flex items-center gap-1.5 border-b-2 px-2 pb-2.5 text-[13px] font-medium transition-colors ${
+                  tab === "access" ? "border-purple-soft text-ink-primary" : "border-transparent text-ink-tertiary"
+                }`}
+              >
+                <ShieldAlert size={13} />
+                Доступ
               </button>
               <button
                 type="button"
@@ -277,6 +386,121 @@ export default function EditCommunityModal({
                   </button>
                 </div>
               </form>
+            ) : tab === "access" ? (
+              <div className="flex flex-col gap-6">
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Режим доступу</label>
+                  <div className="flex flex-col gap-2">
+                    {ACCESS_DEFS.map((a) => {
+                      const on = access === a.key;
+                      return (
+                        <button
+                          key={a.key}
+                          type="button"
+                          onClick={() => changeAccess(a.key)}
+                          className={`flex items-start gap-3 rounded-xl border p-3 text-left transition-colors ${
+                            on ? "border-purple/40 bg-purple/[0.08]" : "border-border-subtle"
+                          }`}
+                        >
+                          <span
+                            className={`mt-0.5 flex h-[16px] w-[16px] shrink-0 items-center justify-center rounded-full border-2 ${
+                              on ? "border-purple-soft" : "border-white/20"
+                            }`}
+                          >
+                            {on ? <span className="h-[7px] w-[7px] rounded-full bg-purple-soft" /> : null}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-[13px] font-semibold text-ink-primary">{a.label}</span>
+                            <span className="mt-0.5 block text-[12px] leading-relaxed text-ink-tertiary">{a.hint}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {access !== "public" ? (
+                  <div>
+                    <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Посилання-запрошення</label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="flex min-w-[180px] flex-1 items-center rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2.5">
+                        <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-[12.5px] text-ink-secondary">
+                          .../join/{inviteCode}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={copyInvite}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-2.5 text-[12px] font-medium text-white transition-opacity hover:opacity-90 ${
+                          copied ? "bg-success" : "bg-grad-purple-blue"
+                        }`}
+                      >
+                        {copied ? <Check size={13} /> : <Copy size={13} />}
+                        {copied ? "Скопійовано" : "Копіювати"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={regenerateInvite}
+                        className="rounded-lg border border-border-subtle bg-white/[0.04] px-3 py-2.5 text-[12px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.09]"
+                      >
+                        Оновити
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+
+                <div>
+                  <label className="mb-1.5 block text-[12px] font-medium text-ink-secondary">Правила публікацій</label>
+                  <div className="flex flex-col">
+                    {TOGGLE_DEFS.map((t) => (
+                      <div key={t.key} className="flex items-center justify-between gap-4 border-b border-white/[0.05] py-3 last:border-0">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-medium text-ink-primary">{t.label}</p>
+                          <p className="mt-0.5 text-[11.5px] leading-relaxed text-ink-tertiary">{t.hint}</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleFlag(t.key)}
+                          className={`relative h-6 w-[42px] shrink-0 rounded-full transition-colors ${
+                            settings[t.key] ? "bg-grad-purple-blue" : "bg-white/[0.1]"
+                          }`}
+                        >
+                          <span
+                            className="absolute top-[3px] h-[18px] w-[18px] rounded-full bg-white shadow-md transition-all"
+                            style={{ left: settings[t.key] ? "21px" : "3px" }}
+                          />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-danger/20 bg-danger/[0.05] p-4">
+                  <p className="text-[13px] font-semibold text-danger">Небезпечна зона</p>
+                  <p className="mt-1.5 text-[12px] leading-relaxed text-ink-secondary">
+                    Архівування закриває публікації та вступ, але зберігає історію. Видалення можливе лише для порожньої
+                    спільноти (без постів, обговорень чи подій).
+                  </p>
+                  <div className="mt-3 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handleArchive}
+                      className="rounded-lg border border-border-subtle bg-white/[0.05] px-3 py-2 text-[12px] font-medium text-ink-primary transition-colors hover:bg-white/[0.1]"
+                    >
+                      Архівувати
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDelete}
+                      disabled={deleting}
+                      className="flex items-center gap-1.5 rounded-lg border border-danger/35 bg-danger/[0.14] px-3 py-2 text-[12px] font-medium text-danger transition-colors hover:bg-danger/[0.24] disabled:opacity-60"
+                    >
+                      {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                      Видалити
+                    </button>
+                  </div>
+                </div>
+              </div>
             ) : (
               <div className="flex flex-col gap-2">
                 {members.map((m) => {

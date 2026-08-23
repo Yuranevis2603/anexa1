@@ -8,6 +8,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Clock,
   ImagePlus,
   Loader2,
   MessageSquarePlus,
@@ -15,17 +16,30 @@ import {
   Search,
   Settings2,
   Share2,
+  ShieldOff,
   UserPlus,
+  X,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  cancelJoinRequest,
   formatMemberCount,
   joinCommunity,
   leaveCommunity,
+  requestToJoinCommunity,
   type Community,
   type CommunityMember,
   type CommunityRoleTier,
 } from "@/lib/communities";
+import {
+  approveJoinRequest,
+  rejectJoinRequest,
+  timeAgo,
+  unbanMember,
+  type AuditRow,
+  type BannedRow,
+  type JoinRequestRow,
+} from "@/lib/communityAdmin";
 import type { EventItem } from "@/lib/events";
 import { getCommunityFeed, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
 import type { Livestream } from "@/lib/livestreams";
@@ -44,7 +58,7 @@ import DiscussionThreadCard from "./DiscussionThreadCard";
 import CreateThreadModal from "./CreateThreadModal";
 import ThreadDetailModal from "./ThreadDetailModal";
 
-type Tab = "feed" | "discussions" | "live" | "events" | "members" | "about";
+type Tab = "feed" | "discussions" | "live" | "events" | "members" | "requests" | "banned" | "audit" | "about";
 
 export default function CommunityDetailView({
   userId,
@@ -59,6 +73,9 @@ export default function CommunityDetailView({
   initialThreads,
   initialPostCount,
   initialActivityCounts,
+  initialJoinRequests,
+  initialBanned,
+  initialAuditLog,
 }: {
   userId: string;
   initialCommunity: Community;
@@ -72,6 +89,9 @@ export default function CommunityDetailView({
   initialThreads: DiscussionThread[];
   initialPostCount: number;
   initialActivityCounts: Record<string, number>;
+  initialJoinRequests: JoinRequestRow[];
+  initialBanned: BannedRow[];
+  initialAuditLog: AuditRow[];
 }) {
   const { showToast } = useToast();
   const onlineUsers = useOnlineUsers();
@@ -97,6 +117,11 @@ export default function CommunityDetailView({
   const [openThread, setOpenThread] = useState<DiscussionThread | null>(null);
 
   const [rulesOpen, setRulesOpen] = useState(true);
+
+  const [joinRequests, setJoinRequests] = useState(initialJoinRequests);
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
+  const [banned, setBanned] = useState(initialBanned);
+  const [banBusyId, setBanBusyId] = useState<string | null>(null);
 
   const isOwner = community.createdBy === userId;
   const myRole: CommunityRoleTier = members.find((m) => m.userId === userId)?.communityRole ?? "member";
@@ -136,6 +161,12 @@ export default function CommunityDetailView({
       if (community.isMember) {
         await leaveCommunity(supabase, userId, community.id);
         setCommunity((c) => ({ ...c, isMember: false, memberCount: c.memberCount - 1 }));
+      } else if (community.hasPendingRequest) {
+        await cancelJoinRequest(supabase, userId, community.id);
+        setCommunity((c) => ({ ...c, hasPendingRequest: false }));
+      } else if (community.access === "request") {
+        await requestToJoinCommunity(supabase, userId, community.id);
+        setCommunity((c) => ({ ...c, hasPendingRequest: true }));
       } else {
         await joinCommunity(supabase, userId, community.id);
         setCommunity((c) => ({ ...c, isMember: true, memberCount: c.memberCount + 1 }));
@@ -145,6 +176,38 @@ export default function CommunityDetailView({
       console.error("community membership toggle failed:", err);
     } finally {
       setPending(false);
+    }
+  }
+
+  async function decideJoinRequest(request: JoinRequestRow, approve: boolean) {
+    setRequestBusyId(request.userId);
+    try {
+      const supabase = createClient();
+      if (approve) {
+        await approveJoinRequest(supabase, community.id, request.userId, userId);
+      } else {
+        await rejectJoinRequest(supabase, community.id, request.userId, userId);
+      }
+      setJoinRequests((prev) => prev.filter((r) => r.userId !== request.userId));
+      if (approve) setCommunity((c) => ({ ...c, memberCount: c.memberCount + 1 }));
+    } catch (err) {
+      showToast("error", "Не вдалося обробити заявку.");
+      console.error("decide join request failed:", err);
+    } finally {
+      setRequestBusyId(null);
+    }
+  }
+
+  async function handleUnban(ban: BannedRow) {
+    setBanBusyId(ban.userId);
+    try {
+      await unbanMember(createClient(), community.id, ban.userId, userId);
+      setBanned((prev) => prev.filter((b) => b.userId !== ban.userId));
+    } catch (err) {
+      showToast("error", "Не вдалося розблокувати учасника.");
+      console.error("unbanMember failed:", err);
+    } finally {
+      setBanBusyId(null);
     }
   }
 
@@ -208,6 +271,9 @@ export default function CommunityDetailView({
     { id: "live", label: "Ефір", dot: Boolean(activeLivestream) },
     { id: "events", label: "Події" },
     { id: "members", label: "Учасники" },
+    ...(isStaff ? [{ id: "requests" as const, label: "Заявки", dot: joinRequests.length > 0 }] : []),
+    ...(isAdmin ? [{ id: "banned" as const, label: "Заблоковані" }] : []),
+    ...(isAdmin ? [{ id: "audit" as const, label: "Журнал дій" }] : []),
     { id: "about", label: "Про спільноту" },
   ];
 
@@ -262,25 +328,41 @@ export default function CommunityDetailView({
                 Керувати
               </button>
             ) : null}
-            <button
-              type="button"
-              onClick={handleToggleMembership}
-              disabled={pending}
-              className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-[12.5px] font-medium transition-opacity disabled:opacity-60 ${
-                community.isMember
-                  ? "border border-border-subtle text-ink-primary hover:bg-white/[0.06]"
-                  : "bg-grad-purple-blue text-white shadow-glow-purple hover:opacity-90"
-              }`}
-            >
-              {pending ? (
-                <Loader2 size={14} className="animate-spin" />
-              ) : community.isMember ? (
-                <Check size={14} />
-              ) : (
-                <UserPlus size={14} />
-              )}
-              {community.isMember ? "Ви учасник" : "Приєднатися"}
-            </button>
+            {community.access === "private" && !community.isMember ? (
+              <p className="rounded-lg border border-border-subtle px-4 py-2 text-[12.5px] font-medium text-ink-tertiary">
+                Лише за запрошенням
+              </p>
+            ) : (
+              <button
+                type="button"
+                onClick={handleToggleMembership}
+                disabled={pending}
+                className={`flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-[12.5px] font-medium transition-opacity disabled:opacity-60 ${
+                  community.isMember || community.hasPendingRequest
+                    ? "border border-border-subtle text-ink-primary hover:bg-white/[0.06]"
+                    : "bg-grad-purple-blue text-white shadow-glow-purple hover:opacity-90"
+                }`}
+              >
+                {pending ? (
+                  <Loader2 size={14} className="animate-spin" />
+                ) : community.isMember ? (
+                  <Check size={14} />
+                ) : community.hasPendingRequest ? (
+                  <X size={14} />
+                ) : community.access === "request" ? (
+                  <Clock size={14} />
+                ) : (
+                  <UserPlus size={14} />
+                )}
+                {community.isMember
+                  ? "Ви учасник"
+                  : community.hasPendingRequest
+                    ? "Скасувати заявку"
+                    : community.access === "request"
+                      ? "Подати заявку"
+                      : "Приєднатися"}
+              </button>
+            )}
             <button
               type="button"
               onClick={handleShare}
@@ -488,6 +570,109 @@ export default function CommunityDetailView({
                       </ProfilePreviewCard>
                     ))}
                   </div>
+                )}
+              </div>
+            ) : null}
+
+            {tab === "requests" ? (
+              <div className="flex flex-col gap-2">
+                {joinRequests.length === 0 ? (
+                  <div className="glass rounded-2xl border border-border-subtle p-6 text-center">
+                    <p className="text-[13px] text-ink-tertiary">Заявок на вступ немає.</p>
+                  </div>
+                ) : (
+                  joinRequests.map((r) => (
+                    <div key={r.id} className="glass flex flex-wrap items-center gap-3 rounded-2xl border border-border-subtle p-3.5">
+                      <Avatar
+                        src={r.avatarUrl}
+                        name={r.fullName}
+                        size={40}
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[12px] font-semibold text-white"
+                      />
+                      <div className="min-w-[160px] flex-1">
+                        <p className="text-[13px] font-medium text-ink-primary">{r.fullName}</p>
+                        {r.roleTitle || r.company ? (
+                          <p className="text-[11.5px] text-ink-tertiary">{[r.roleTitle, r.company].filter(Boolean).join(" · ")}</p>
+                        ) : null}
+                        {r.note ? <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">«{r.note}»</p> : null}
+                      </div>
+                      <p className="shrink-0 text-[11px] text-ink-tertiary">{timeAgo(r.createdAt)}</p>
+                      <div className="flex shrink-0 gap-2">
+                        <button
+                          type="button"
+                          disabled={requestBusyId === r.userId}
+                          onClick={() => decideJoinRequest(r, true)}
+                          className="rounded-lg border border-success/30 bg-success/[0.14] px-3 py-1.5 text-[12px] font-medium text-success transition-colors hover:bg-success/[0.22] disabled:opacity-60"
+                        >
+                          Схвалити
+                        </button>
+                        <button
+                          type="button"
+                          disabled={requestBusyId === r.userId}
+                          onClick={() => decideJoinRequest(r, false)}
+                          className="rounded-lg border border-border-subtle bg-white/[0.04] px-3 py-1.5 text-[12px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.09] disabled:opacity-60"
+                        >
+                          Відхилити
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
+
+            {tab === "banned" ? (
+              <div className="flex flex-col gap-2">
+                {banned.length === 0 ? (
+                  <div className="glass flex flex-col items-center gap-2 rounded-2xl border border-border-subtle p-8 text-center">
+                    <ShieldOff size={18} className="text-ink-tertiary" />
+                    <p className="text-[13px] text-ink-tertiary">Немає заблокованих учасників.</p>
+                  </div>
+                ) : (
+                  banned.map((b) => (
+                    <div key={b.userId} className="flex flex-wrap items-center gap-3 rounded-2xl border border-danger/20 bg-danger/[0.05] p-3.5">
+                      <Avatar
+                        src={b.avatarUrl}
+                        name={b.fullName}
+                        size={40}
+                        className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/[0.08] text-[12px] font-semibold text-ink-secondary"
+                      />
+                      <div className="min-w-[160px] flex-1">
+                        <p className="text-[13px] font-medium text-ink-secondary">{b.fullName}</p>
+                        {b.reason ? <p className="text-[11.5px] text-ink-tertiary">{b.reason}</p> : null}
+                      </div>
+                      <div className="shrink-0 text-right">
+                        {b.bannedByName ? <p className="text-[11px] text-ink-tertiary">{b.bannedByName}</p> : null}
+                        <p className="text-[11px] text-ink-tertiary">{timeAgo(b.createdAt)}</p>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={banBusyId === b.userId}
+                        onClick={() => handleUnban(b)}
+                        className="shrink-0 rounded-lg border border-border-subtle bg-white/[0.05] px-3 py-1.5 text-[12px] font-medium text-ink-primary transition-colors hover:bg-white/[0.1] disabled:opacity-60"
+                      >
+                        Розблокувати
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : null}
+
+            {tab === "audit" ? (
+              <div className="rounded-2xl border border-border-subtle bg-white/[0.028] px-4">
+                {initialAuditLog.length === 0 ? (
+                  <p className="py-8 text-center text-[13px] text-ink-tertiary">Дій ще не було.</p>
+                ) : (
+                  initialAuditLog.map((a) => (
+                    <div key={a.id} className="flex items-center gap-3 border-b border-white/[0.05] py-3 last:border-0">
+                      <div className="min-w-[160px] flex-1">
+                        <p className="text-[13px] text-ink-secondary">{a.action}</p>
+                        {a.actorName ? <p className="text-[11px] text-ink-tertiary">{a.actorName}</p> : null}
+                      </div>
+                      <span className="shrink-0 text-[11px] text-ink-tertiary">{timeAgo(a.createdAt)}</span>
+                    </div>
+                  ))
                 )}
               </div>
             ) : null}

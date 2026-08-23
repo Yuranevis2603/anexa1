@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCommunity, getCommunityMembers, getCommunityPostCount, getMemberActivityCounts } from "@/lib/communities";
+import { getAuditLog, getBannedMembers, getJoinRequests } from "@/lib/communityAdmin";
 import { getEvents } from "@/lib/events";
 import { getCommunityFeed, getUserLikes, getUserSaves } from "@/lib/feed";
 import { getActiveLivestream, getPastLivestreams } from "@/lib/livestreams";
@@ -44,6 +45,17 @@ export default async function CommunityDetailPage({ params }: { params: { id: st
     getUserSaves(supabase, user.id, postIds),
   ]);
 
+  const isOwner = community.createdBy === user.id;
+  const myRole = members.find((m) => m.userId === user.id)?.communityRole ?? "member";
+  const isAdmin = isOwner || myRole === "admin";
+  const isStaff = isAdmin || myRole === "moderator";
+
+  const [joinRequests, banned, auditLog] = await Promise.all([
+    isStaff ? getJoinRequests(supabase, community.id) : Promise.resolve([]),
+    isAdmin ? getBannedMembers(supabase, community.id) : Promise.resolve([]),
+    isAdmin ? getAuditLog(supabase, community.id) : Promise.resolve([]),
+  ]);
+
   return (
     <CommunityDetailView
       userId={user.id}
@@ -58,6 +70,9 @@ export default async function CommunityDetailPage({ params }: { params: { id: st
       initialThreads={threads}
       initialPostCount={postCount}
       initialActivityCounts={Object.fromEntries(activityCounts)}
+      initialJoinRequests={joinRequests}
+      initialBanned={banned}
+      initialAuditLog={auditLog}
     />
   );
 }

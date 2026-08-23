@@ -1753,6 +1753,102 @@ revoke execute on function public.award_review_ax() from public, anon, authentic
 -- in the public schema, so RLS is on by default even if a migration forgets it.
 
 -- ============================================================================
+-- Community admin — access mode, invite links, join requests, bans, audit
+-- log. Builds on the existing is_community_owner/is_community_admin/
+-- is_community_staff helpers and community_members.role rather than a
+-- separate model.
+-- ============================================================================
+alter table public.communities
+  add column if not exists access text not null default 'public'
+    check (access in ('public', 'request', 'private')),
+  add column if not exists invite_code text unique default substr(md5(random()::text), 1, 6),
+  add column if not exists settings jsonb not null default
+    '{"approve":false,"moderatePosts":false,"memberEvents":true,"digest":true}'::jsonb,
+  add column if not exists archived_at timestamptz;
+
+create policy "communities_update_admins"
+  on public.communities for update
+  to authenticated
+  using (public.is_community_admin(id, (select auth.uid())));
+
+create policy "communities_delete_owner"
+  on public.communities for delete
+  to authenticated
+  using (created_by = (select auth.uid()));
+
+create table if not exists public.community_join_requests (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  note text,
+  created_at timestamptz not null default now(),
+  unique (community_id, user_id)
+);
+
+create index if not exists idx_community_join_requests_community_id on public.community_join_requests (community_id);
+
+alter table public.community_join_requests enable row level security;
+
+create policy "community_join_requests_select"
+  on public.community_join_requests for select
+  to authenticated
+  using (user_id = (select auth.uid()) or public.is_community_staff(community_id, (select auth.uid())));
+
+create policy "community_join_requests_insert_own"
+  on public.community_join_requests for insert
+  to authenticated
+  with check (user_id = (select auth.uid()));
+
+create policy "community_join_requests_delete_staff"
+  on public.community_join_requests for delete
+  to authenticated
+  using (user_id = (select auth.uid()) or public.is_community_staff(community_id, (select auth.uid())));
+
+create table if not exists public.community_bans (
+  community_id uuid not null references public.communities(id) on delete cascade,
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  reason text,
+  banned_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  primary key (community_id, user_id)
+);
+
+alter table public.community_bans enable row level security;
+
+create policy "community_bans_select_admins"
+  on public.community_bans for select
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())));
+
+create policy "community_bans_manage_admins"
+  on public.community_bans for all
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())))
+  with check (public.is_community_admin(community_id, (select auth.uid())));
+
+create table if not exists public.community_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  community_id uuid not null references public.communities(id) on delete cascade,
+  actor_id uuid references public.profiles(id),
+  action text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_community_audit_log_community_id on public.community_audit_log (community_id);
+
+alter table public.community_audit_log enable row level security;
+
+create policy "community_audit_log_select_admins"
+  on public.community_audit_log for select
+  to authenticated
+  using (public.is_community_admin(community_id, (select auth.uid())));
+
+create policy "community_audit_log_insert_staff"
+  on public.community_audit_log for insert
+  to authenticated
+  with check (actor_id = (select auth.uid()) and public.is_community_staff(community_id, (select auth.uid())));
+
+-- ============================================================================
 -- Storage buckets
 -- Both buckets are public-read; writes are restricted to the caller's own
 -- `{auth.uid()}/...` folder via storage.foldername(name)[1].
