@@ -21,6 +21,7 @@ function DashboardShellInner({
   initialUnreadMessages,
   pendingConnections,
   unreadNotifications,
+  isPlatformAdmin,
 }: {
   children: React.ReactNode;
   userId?: string;
@@ -30,6 +31,7 @@ function DashboardShellInner({
   initialUnreadMessages: number;
   pendingConnections: number;
   unreadNotifications: number;
+  isPlatformAdmin: boolean;
 }) {
   const [navOpen, setNavOpen] = useState(false);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
@@ -84,6 +86,7 @@ function DashboardShellInner({
         unreadMessages={unreadMessages}
         pendingConnections={pendingConnections}
         unreadNotifications={unreadNotifications}
+        isPlatformAdmin={isPlatformAdmin}
       />
 
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -110,6 +113,7 @@ export default function DashboardShell({
   initialUnreadMessages = 0,
   pendingConnections = 0,
   unreadNotifications = 0,
+  isPlatformAdmin = false,
 }: {
   children: React.ReactNode;
   userId?: string;
@@ -119,6 +123,7 @@ export default function DashboardShell({
   initialUnreadMessages?: number;
   pendingConnections?: number;
   unreadNotifications?: number;
+  isPlatformAdmin?: boolean;
 }) {
   return (
     <OnlinePresenceProvider userId={userId}>
@@ -130,6 +135,7 @@ export default function DashboardShell({
         initialUnreadMessages={initialUnreadMessages}
         pendingConnections={pendingConnections}
         unreadNotifications={unreadNotifications}
+        isPlatformAdmin={isPlatformAdmin}
       >
         {children}
       </DashboardShellInner>

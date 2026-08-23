@@ -15,6 +15,7 @@ create table if not exists public.profiles (
   avatar_url text,
   bio text,
   is_approved boolean not null default false, -- closed beta / invite gating
+  is_platform_admin boolean not null default false, -- site-wide admin (approves pending profiles)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   industries text[] not null default '{}',
@@ -1520,7 +1521,7 @@ create table if not exists public.notifications (
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
-    'referral_joined'
+    'referral_joined', 'profile_approved'
   )),
   entity_type text,
   entity_id uuid,
@@ -1566,6 +1567,33 @@ end;
 $$;
 
 revoke execute on function public.create_notification(uuid, uuid, text, text, uuid) from public, anon, authenticated;
+
+-- Closed-beta profile approval, gated on profiles.is_platform_admin. profiles
+-- itself has no admin-only update policy, so this SECURITY DEFINER function
+-- is the only way is_approved ever flips true after signup.
+create or replace function public.approve_profile(p_user_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not exists (
+    select 1 from public.profiles where id = (select auth.uid()) and is_platform_admin
+  ) then
+    raise exception 'Not authorized';
+  end if;
+
+  update public.profiles set is_approved = true, updated_at = now()
+  where id = p_user_id and is_approved = false;
+
+  if found then
+    perform public.create_notification(p_user_id, null, 'profile_approved', 'profile', p_user_id);
+  end if;
+end;
+$$;
+
+grant execute on function public.approve_profile(uuid) to authenticated;
 
 -- Incoming "Познайомитися" request — the accepted side is already covered by
 -- award_connection_ax's notification below, this covers the initial ask.

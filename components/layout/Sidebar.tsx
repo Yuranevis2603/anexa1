@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Calendar, Gift, X } from "lucide-react";
+import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Calendar, Gift, ShieldCheck, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -12,8 +12,13 @@ type NavItem = {
   badge?: number;
 };
 
-function buildPrimaryNav(unreadMessages: number, pendingConnections: number, unreadNotifications: number): NavItem[] {
-  return [
+function buildPrimaryNav(
+  unreadMessages: number,
+  pendingConnections: number,
+  unreadNotifications: number,
+  isPlatformAdmin: boolean
+): NavItem[] {
+  const items: NavItem[] = [
     { label: "Головна", href: "/dashboard", icon: Home },
     { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
     { label: "Спільноти", href: "/dashboard/communities", icon: Users },
@@ -40,6 +45,12 @@ function buildPrimaryNav(unreadMessages: number, pendingConnections: number, unr
     { label: "Запросити друга", href: "/dashboard/invite", icon: Gift },
     { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
   ];
+
+  if (isPlatformAdmin) {
+    items.push({ label: "Підтвердження профілів", href: "/dashboard/admin", icon: ShieldCheck });
+  }
+
+  return items;
 }
 
 function NavLink({
@@ -80,15 +91,17 @@ export default function Sidebar({
   unreadMessages = 0,
   pendingConnections = 0,
   unreadNotifications = 0,
+  isPlatformAdmin = false,
 }: {
   open?: boolean;
   onClose?: () => void;
   unreadMessages?: number;
   pendingConnections?: number;
   unreadNotifications?: number;
+  isPlatformAdmin?: boolean;
 }) {
   const activePath = usePathname();
-  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections, unreadNotifications);
+  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections, unreadNotifications, isPlatformAdmin);
 
   return (
     <aside
