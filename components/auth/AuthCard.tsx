@@ -144,15 +144,13 @@ export default function AuthCard({
     const supabase = createClient();
 
     try {
-      // 1. Validate the invite code is real and unused.
-      const { data: invite, error: inviteError } = await supabase
-        .from("invite_codes")
-        .select("code, used_by")
-        .eq("code", regInvite.trim())
-        .is("used_by", null)
-        .single();
+      // 1. Validate the code — either an unused invite_codes entry or a
+      //    member's persistent referral code.
+      const { data: isValid, error: inviteError } = await supabase.rpc("validate_invite_code", {
+        p_code: regInvite.trim(),
+      });
 
-      if (inviteError || !invite) {
+      if (inviteError || !isValid) {
         setRegErrors({ invite: "Невірний або вже використаний код запрошення" });
         setRegLoading(false);
         return;
@@ -693,7 +691,7 @@ const styles = `
   }
   .alert.danger{ background: var(--danger-soft); border-color: rgba(240,101,95,0.28); color:#FFC7C4; }
   .alert.success{ background: var(--success-soft); border-color: rgba(79,209,165,0.28); color:#BFF3E1; }
-  .alert :global(svg){ flex-shrink:0; margin-top:1px; width:16px; height:16px; }
+  .alert svg{ flex-shrink:0; margin-top:1px; width:16px; height:16px; }
 
   form{ display:flex; flex-direction:column; gap:16px; }
   .name-row{ display:flex; gap:12px; }
@@ -720,7 +718,7 @@ const styles = `
     font-size:12.5px; color: var(--danger); display:none; align-items:center; gap:6px;
   }
   .field.error .field-error{ display:flex; margin-top:1px; }
-  .field-error :global(svg){ width:13px; height:13px; flex-shrink:0; }
+  .field-error svg{ width:13px; height:13px; flex-shrink:0; }
 
   .field-hint{ font-size:12px; color: var(--text-muted); }
 
@@ -730,7 +728,7 @@ const styles = `
     display:flex; transition: color .15s var(--ease);
   }
   .toggle-visibility:hover{ color: var(--text-secondary); }
-  .toggle-visibility :global(svg){ width:18px; height:18px; }
+  .toggle-visibility svg{ width:18px; height:18px; }
 
   .strength{ display:flex; gap:5px; margin-top:2px; height:3px; }
   .strength span{ flex:1; border-radius:2px; background: rgba(255,255,255,0.08); transition: background .25s var(--ease); }
@@ -744,11 +742,11 @@ const styles = `
     background: var(--input-bg); flex-shrink:0; display:flex; align-items:center; justify-content:center;
     transition: all .18s var(--ease); margin-top:1px;
   }
-  .checkbox-box :global(svg){ width:11px; height:11px; opacity:0; transform: scale(0.6); transition: all .15s var(--ease); color:#fff; }
+  .checkbox-box svg{ width:11px; height:11px; opacity:0; transform: scale(0.6); transition: all .15s var(--ease); color:#fff; }
   .checkbox-row input:checked + .checkbox-box{ background: linear-gradient(135deg, var(--accent), var(--accent-2)); border-color: transparent; }
-  .checkbox-row input:checked + .checkbox-box :global(svg){ opacity:1; transform:scale(1); }
+  .checkbox-row input:checked + .checkbox-box svg{ opacity:1; transform:scale(1); }
   .checkbox-label{ font-size:13.5px; color: var(--text-secondary); line-height:1.5; }
-  .checkbox-label :global(a){ color: var(--text-primary); text-decoration: underline; text-decoration-color: rgba(255,255,255,0.25); text-underline-offset:2px; }
+  .checkbox-label a{ color: var(--text-primary); text-decoration: underline; text-decoration-color: rgba(255,255,255,0.25); text-underline-offset:2px; }
 
   .link-btn{
     background:none; border:none; font-family:inherit; font-size:13.5px; font-weight:500;
@@ -777,11 +775,11 @@ const styles = `
   @keyframes spin{ to{ transform: rotate(360deg); } }
 
   .switch-line{ text-align:center; margin-top:26px; font-size:13.5px; color: var(--text-secondary); }
-  .switch-line :global(button){
+  .switch-line button{
     background:none; border:none; font-family:inherit; font-size:13.5px; font-weight:600;
     color: var(--accent-2); cursor:pointer; padding:0; margin-left:2px; transition: color .15s var(--ease);
   }
-  .switch-line :global(button):hover{ color:#B3A3FA; }
+  .switch-line button:hover{ color:#B3A3FA; }
 
   .back-row{
     display:flex; align-items:center; gap:8px; background:none; border:none;
@@ -789,14 +787,14 @@ const styles = `
     cursor:pointer; margin-bottom:22px; transition: color .15s var(--ease);
   }
   .back-row:hover{ color: var(--text-primary); }
-  .back-row :global(svg){ width:16px; height:16px; }
+  .back-row svg{ width:16px; height:16px; }
 
   .success-block{ display:flex; flex-direction:column; align-items:center; text-align:center; padding:8px 0 4px; }
   .success-icon{
     width:56px; height:56px; border-radius:50%; background: var(--success-soft);
     border:1px solid rgba(79,209,165,0.3); display:flex; align-items:center; justify-content:center; margin-bottom:20px;
   }
-  .success-icon :global(svg){ width:26px; height:26px; color: var(--success); }
+  .success-icon svg{ width:26px; height:26px; color: var(--success); }
 
   .hp-field{
     position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;

@@ -27,7 +27,11 @@ create table if not exists public.profiles (
   membership_tier text not null default 'standard'
     check (membership_tier in ('standard', 'black')),
   business_goals text[] not null default '{}',
-  languages jsonb not null default '[]'
+  languages jsonb not null default '[]',
+  -- Persistent, reusable referral code — assigned once at signup by
+  -- handle_new_user(), never regenerated. Distinct from invite_codes,
+  -- which stays single-use (closed-beta admission gating).
+  referral_code text unique
 );
 
 alter table public.profiles enable row level security;
@@ -78,6 +82,30 @@ create policy "invite_codes_insert_own"
   on public.invite_codes for insert
   to public
   with check (created_by = (select auth.uid()));
+
+-- ============================================================================
+-- referral_joins
+-- Every successful signup through a member's persistent referral link
+-- (profiles.referral_code) or a legacy single-use invite_codes code.
+-- Multi-use, unlike invite_codes' single used_by/used_at — a referral link
+-- never expires. Written only by handle_new_user() (see Triggers & functions
+-- below); referred_id is unique so a member is credited to one referrer.
+-- ============================================================================
+create table if not exists public.referral_joins (
+  id uuid primary key default gen_random_uuid(),
+  referrer_id uuid not null references public.profiles(id) on delete cascade,
+  referred_id uuid not null unique references public.profiles(id) on delete cascade,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_referral_joins_referrer_id on public.referral_joins (referrer_id, created_at desc);
+
+alter table public.referral_joins enable row level security;
+
+create policy "referral_joins_select_own"
+  on public.referral_joins for select
+  to authenticated
+  using (referrer_id = (select auth.uid()));
 
 -- ============================================================================
 -- experience
@@ -1179,18 +1207,35 @@ create or replace function public.handle_new_user()
 returns trigger as $$
 declare
   v_referrer_id uuid;
+  v_code text;
+  v_new_referral_code text;
 begin
-  insert into public.profiles (id, full_name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Новий учасник'));
+  -- Every member gets their own persistent referral code at signup.
+  loop
+    v_new_referral_code := substr(md5(random()::text || new.id::text), 1, 8);
+    exit when not exists (select 1 from public.profiles where referral_code = v_new_referral_code);
+  end loop;
+
+  insert into public.profiles (id, full_name, referral_code)
+  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Новий учасник'), v_new_referral_code);
 
   if new.raw_user_meta_data ? 'invite_code' then
+    v_code := new.raw_user_meta_data->>'invite_code';
+
+    -- Legacy single-use code (hand-seeded admission gate, or an
+    -- old-style member-generated one from before referral links existed).
     update public.invite_codes
     set used_by = new.id, used_at = now()
-    where code = new.raw_user_meta_data->>'invite_code'
-      and used_by is null
+    where code = v_code and used_by is null
     returning created_by into v_referrer_id;
 
+    -- Otherwise it's a member's persistent referral link.
+    if v_referrer_id is null then
+      select id into v_referrer_id from public.profiles where referral_code = v_code;
+    end if;
+
     if v_referrer_id is not null then
+      insert into public.referral_joins (referrer_id, referred_id) values (v_referrer_id, new.id);
       perform public.award_ax(v_referrer_id, 'referral', 100, 10);
       perform public.create_notification(v_referrer_id, new.id, 'referral_joined', 'profile', new.id);
     end if;
@@ -1204,6 +1249,22 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
+-- Lets the registration form validate a code (either an unused invite_codes
+-- entry or a member's persistent referral_code) without needing anon RLS
+-- read access to either table directly.
+create or replace function public.validate_invite_code(p_code text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select exists (select 1 from public.invite_codes where code = p_code and used_by is null)
+    or exists (select 1 from public.profiles where referral_code = p_code);
+$$;
+
+grant execute on function public.validate_invite_code(text) to anon, authenticated;
 
 -- Mirrors profileCompleteness() in lib/profile.ts: 6 text fields + 4 tag
 -- arrays, all non-empty = 100%. Keep the two in sync if either changes.

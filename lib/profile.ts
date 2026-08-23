@@ -20,6 +20,7 @@ export type Profile = {
   membership_tier: "standard" | "black";
   business_goals: string[];
   languages: unknown[];
+  referral_code: string | null;
 };
 
 export async function getProfile(
