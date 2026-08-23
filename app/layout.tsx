@@ -1,11 +1,30 @@
 import type { Metadata } from "next";
 import "./globals.css";
 
+const TITLE = "Anexa Club — Приватна бізнес-спільнота";
+const DESCRIPTION = "Приватна бізнес-спільнота нового рівня.";
+
 export const metadata: Metadata = {
-  title: "Anexa Club — Приватна бізнес-спільнота",
-  description: "Приватна бізнес-спільнота нового рівня.",
+  metadataBase: new URL("https://anexa.club"),
+  title: TITLE,
+  description: DESCRIPTION,
   icons: {
     icon: "/anexa-logo.png",
+  },
+  openGraph: {
+    title: TITLE,
+    description: DESCRIPTION,
+    url: "https://anexa.club",
+    siteName: "Anexa Club",
+    images: [{ url: "/anexa-logo.png", width: 511, height: 512 }],
+    locale: "uk_UA",
+    type: "website",
+  },
+  twitter: {
+    card: "summary",
+    title: TITLE,
+    description: DESCRIPTION,
+    images: ["/anexa-logo.png"],
   },
 };
 
