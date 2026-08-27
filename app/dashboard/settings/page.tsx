@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { getProfile } from "@/lib/profile";
 import SettingsView from "@/components/settings/SettingsView";
 
 export const dynamic = "force-dynamic";
@@ -14,5 +15,10 @@ export default async function SettingsPage() {
     redirect("/login");
   }
 
-  return <SettingsView email={user.email ?? ""} />;
+  const profile = await getProfile(supabase, user.id);
+  if (!profile) {
+    redirect("/login");
+  }
+
+  return <SettingsView profile={profile} email={user.email ?? ""} />;
 }
