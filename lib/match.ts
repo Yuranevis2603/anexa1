@@ -100,11 +100,16 @@ export async function getMatchRecommendations(
     excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
   }
 
+  // Scan a bounded multiple of what's actually needed instead of an
+  // unconditional flat 200 — keeps this cheap as the member base grows
+  // while still giving the overlap scorer enough candidates to rank.
+  const scanLimit = Math.min(Math.max(limit * 5, 50), 200);
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
     .neq("id", me.id)
-    .limit(200);
+    .limit(scanLimit);
 
   if (error || !data) {
     if (error) console.error("getMatchRecommendations failed:", error.message);
