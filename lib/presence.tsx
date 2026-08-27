@@ -13,9 +13,13 @@ const OnlineUsersContext = createContext<Set<string>>(new Set());
  */
 export function OnlinePresenceProvider({
   userId,
+  hideOnlineStatus = false,
   children,
 }: {
   userId: string | undefined;
+  /** Settings → Приватність toggle: still see who else is online, just
+   * never broadcast this member's own presence key. */
+  hideOnlineStatus?: boolean;
   children: React.ReactNode;
 }) {
   const [online, setOnline] = useState<Set<string>>(new Set());
@@ -33,7 +37,7 @@ export function OnlinePresenceProvider({
         setOnline(new Set(Object.keys(channel.presenceState())));
       })
       .subscribe(async (status) => {
-        if (status === "SUBSCRIBED") {
+        if (status === "SUBSCRIBED" && !hideOnlineStatus) {
           await channel.track({ online_at: new Date().toISOString() });
         }
       });
@@ -41,7 +45,7 @@ export function OnlinePresenceProvider({
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [userId]);
+  }, [userId, hideOnlineStatus]);
 
   return <OnlineUsersContext.Provider value={online}>{children}</OnlineUsersContext.Provider>;
 }

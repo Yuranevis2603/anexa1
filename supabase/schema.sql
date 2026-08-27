@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-21 (latest: consolidated ProfileView RPCs).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-27 (latest: notification_preferences + profile privacy/deletion columns).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -32,7 +32,14 @@ create table if not exists public.profiles (
   -- Persistent, reusable referral code — assigned once at signup by
   -- handle_new_user(), never regenerated. Distinct from invite_codes,
   -- which stays single-use (closed-beta admission gating).
-  referral_code text unique
+  referral_code text unique,
+  -- Settings → Приватність: when true, OnlinePresenceProvider stops
+  -- broadcasting this member's own presence key.
+  hide_online_status boolean not null default false,
+  -- Settings → danger zone: soft-delete flag set by requestAccountDeletion();
+  -- an admin processes the actual removal (see profile.ts for why this
+  -- isn't an instant hard delete).
+  deletion_requested_at timestamptz
 );
 
 alter table public.profiles enable row level security;
@@ -1543,8 +1550,39 @@ create policy "notifications_update_own"
   to public
   using (user_id = (select auth.uid()));
 
+-- ============================================================================
+-- notification_preferences
+-- One row per member, disabled_types lists notification `type` values they
+-- opted out of via Settings. Missing row / empty array = everything enabled.
+-- Checked inside create_notification() so every existing trigger funnels
+-- through the same guard without needing its own change.
+-- ============================================================================
+create table if not exists public.notification_preferences (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  disabled_types text[] not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+alter table public.notification_preferences enable row level security;
+
+create policy "notification_preferences_select_own"
+  on public.notification_preferences for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
+create policy "notification_preferences_insert_own"
+  on public.notification_preferences for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "notification_preferences_update_own"
+  on public.notification_preferences for update
+  to public
+  using (user_id = (select auth.uid()));
+
 -- Shared writer for every notification-producing trigger below. Never
--- notifies someone about their own action (e.g. liking your own post).
+-- notifies someone about their own action (e.g. liking your own post), and
+-- never inserts a type the recipient disabled in notification_preferences.
 create or replace function public.create_notification(
   p_user_id uuid,
   p_actor_id uuid,
@@ -1561,6 +1599,14 @@ begin
   if p_actor_id is not null and p_actor_id = p_user_id then
     return;
   end if;
+
+  if exists (
+    select 1 from public.notification_preferences np
+    where np.user_id = p_user_id and p_type = any(np.disabled_types)
+  ) then
+    return;
+  end if;
+
   insert into public.notifications (user_id, actor_id, type, entity_type, entity_id)
   values (p_user_id, p_actor_id, p_type, p_entity_type, p_entity_id);
 end;

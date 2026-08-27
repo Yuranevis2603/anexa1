@@ -22,6 +22,8 @@ export type Profile = {
   business_goals: string[];
   languages: unknown[];
   referral_code: string | null;
+  hide_online_status: boolean;
+  deletion_requested_at: string | null;
 };
 
 export async function getProfile(
@@ -40,6 +42,34 @@ export async function getProfile(
   }
 
   return data as Profile;
+}
+
+/** Privacy toggle: when true, OnlinePresenceProvider stops broadcasting
+ * this member's own presence key (others simply never see them online). */
+export async function setHideOnlineStatus(
+  supabase: SupabaseClient,
+  userId: string,
+  hide: boolean
+): Promise<void> {
+  const { error } = await supabase.from("profiles").update({ hide_online_status: hide }).eq("id", userId);
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
+/** Soft delete: flags the account for removal and signs the member out.
+ * Deliberately not a hard delete — several tables reference profiles
+ * without ON DELETE CASCADE (communities, events, messages, reviews), so an
+ * instant cascading delete risks leaving orphaned content or failing on a
+ * foreign-key violation. An admin processes the actual data removal. */
+export async function requestAccountDeletion(supabase: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ deletion_requested_at: new Date().toISOString() })
+    .eq("id", userId);
+  if (error) {
+    throw new Error(error.message);
+  }
 }
 
 const MAX_AVATAR_BYTES = 5 * 1024 * 1024;

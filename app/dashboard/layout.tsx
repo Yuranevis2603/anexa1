@@ -35,6 +35,7 @@ export default async function DashboardLayout({
         pendingConnections={pendingConnections}
         unreadNotifications={unreadNotifications}
         isPlatformAdmin={profile?.is_platform_admin ?? false}
+        hideOnlineStatus={profile?.hide_online_status ?? false}
       >
         {children}
       </DashboardShell>
