@@ -27,7 +27,8 @@ import { createClient } from "@/lib/supabase/client";
 import { profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
 import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
-import { follow, unfollow } from "@/lib/follows";
+import { follow, unfollow, getFollowCounts } from "@/lib/follows";
+import FollowListModal from "./FollowListModal";
 import { blockUser, unblockUser } from "@/lib/moderation";
 import {
   computeLevelProgress,
@@ -159,6 +160,8 @@ export default function ProfileView({
   const [connectionLoading, setConnectionLoading] = useState(false);
   const [following, setFollowing] = useState(false);
   const [followLoading, setFollowLoading] = useState(false);
+  const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
+  const [followListOpen, setFollowListOpen] = useState<"followers" | "following" | null>(null);
   const [blocked, setBlocked] = useState(false);
   const [blockLoading, setBlockLoading] = useState(false);
   const [hasReviewed, setHasReviewed] = useState(false);
@@ -179,12 +182,13 @@ export default function ProfileView({
 
     async function load() {
       setLoadingSections(true);
-      const [projectsData, reviewsData, activityData, statsData, levelsData] = await Promise.all([
+      const [projectsData, reviewsData, activityData, statsData, levelsData, followCountsData] = await Promise.all([
         getProjects(supabase, current.id),
         getReviews(supabase, current.id),
         getUserActivity(supabase, current.id, undefined, viewerId),
         getProfileStats(supabase, current.id),
         getLevels(supabase),
+        getFollowCounts(supabase, current.id),
       ]);
       if (cancelled) return;
       setProjects(projectsData);
@@ -192,6 +196,7 @@ export default function ProfileView({
       setActivity(activityData);
       setStats(statsData);
       setLevels(levelsData);
+      setFollowCounts(followCountsData);
       setLoadingSections(false);
 
       if (viewerId && activityData.length > 0) {
@@ -282,12 +287,14 @@ export default function ProfileView({
     setFollowLoading(true);
     const was = following;
     setFollowing(!was);
+    setFollowCounts((c) => ({ ...c, followers: c.followers + (was ? -1 : 1) }));
     try {
       const supabase = createClient();
       if (was) await unfollow(supabase, viewerId, current.id);
       else await follow(supabase, viewerId, current.id);
     } catch (err) {
       setFollowing(was);
+      setFollowCounts((c) => ({ ...c, followers: c.followers + (was ? 1 : -1) }));
       showToast("error", "Не вдалося оновити підписку.");
       console.error("toggle follow failed:", err);
     } finally {
@@ -357,6 +364,20 @@ export default function ProfileView({
                   <MapPin size={12} /> {current.location}
                 </span>
               ) : null}
+              <button
+                type="button"
+                onClick={() => setFollowListOpen("followers")}
+                className="text-[12px] text-ink-secondary transition-colors hover:text-ink-primary"
+              >
+                <span className="font-semibold text-ink-primary">{followCounts.followers}</span> підписників
+              </button>
+              <button
+                type="button"
+                onClick={() => setFollowListOpen("following")}
+                className="text-[12px] text-ink-secondary transition-colors hover:text-ink-primary"
+              >
+                <span className="font-semibold text-ink-primary">{followCounts.following}</span> підписок
+              </button>
             </div>
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
@@ -842,6 +863,10 @@ export default function ProfileView({
 
       {gamificationInfoOpen ? (
         <GamificationInfoModal levels={levels} onClose={() => setGamificationInfoOpen(false)} />
+      ) : null}
+
+      {followListOpen ? (
+        <FollowListModal userId={current.id} kind={followListOpen} onClose={() => setFollowListOpen(null)} />
       ) : null}
     </div>
   );

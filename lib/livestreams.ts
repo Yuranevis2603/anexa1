@@ -45,8 +45,13 @@ function toLivestream(row: LivestreamRow): Livestream {
 
 /** The community's current live session, if any (there's at most one —
  * starting a new one always ends the previous, see the /api/daily/rooms
- * POST handler). */
+ * POST handler). First asks the DB to auto-end any stream whose host has
+ * stopped heartbeating (tab closed without clicking "Завершити ефір") —
+ * a no-op for a genuinely live stream, so it's cheap to call on every load. */
 export async function getActiveLivestream(supabase: SupabaseClient, communityId: string): Promise<Livestream | null> {
+  const { error: staleError } = await supabase.rpc("end_stale_livestreams", { p_community_id: communityId });
+  if (staleError) console.error("end_stale_livestreams failed:", staleError.message);
+
   const { data, error } = await supabase
     .from("community_livestreams")
     .select(LIVESTREAM_SELECT)
@@ -98,6 +103,19 @@ export async function startLivestream(communityId: string, title: string): Promi
   }
 
   return body.livestream as Livestream;
+}
+
+/** Called periodically by the host's own LivestreamPanel while their stream
+ * is active — keeps last_heartbeat_at fresh so end_stale_livestreams never
+ * mistakes a genuinely live session for an abandoned one. */
+export async function pingLivestream(supabase: SupabaseClient, livestreamId: string): Promise<void> {
+  const { error } = await supabase
+    .from("community_livestreams")
+    .update({ last_heartbeat_at: new Date().toISOString() })
+    .eq("id", livestreamId);
+  if (error) {
+    console.error("pingLivestream failed:", error.message);
+  }
 }
 
 export async function endLivestream(livestreamId: string): Promise<void> {

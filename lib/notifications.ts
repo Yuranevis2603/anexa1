@@ -9,7 +9,9 @@ export type NotificationType =
   | "message"
   | "review"
   | "referral_joined"
-  | "profile_approved";
+  | "profile_approved"
+  | "event_registration"
+  | "event_reminder";
 
 export type Notification = {
   id: string;
@@ -140,7 +142,69 @@ export function describeNotification(n: Notification): { text: string; href: str
       return { text: `${actor} приєднався(лась) за вашим запрошенням`, href: "/dashboard/profile?tab=info" };
     case "profile_approved":
       return { text: "Ваш профіль підтверджено модератором", href: "/dashboard/profile" };
+    case "event_registration":
+      return { text: "Реєстрацію на подію підтверджено", href: "/dashboard/events" };
+    case "event_reminder":
+      return { text: "Подія, на яку ви зареєстровані, скоро розпочнеться", href: "/dashboard/events" };
   }
+}
+
+/** Ukrainian label for each notification type's Settings toggle. */
+export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
+  like: "Лайки на моїх постах",
+  comment: "Коментарі на моїх постах",
+  follow: "Нові підписники",
+  connection_request: "Запити на знайомство",
+  connection_accepted: "Прийняті запити на знайомство",
+  message: "Нові повідомлення",
+  review: "Нові відгуки",
+  referral_joined: "Приєднання за моїм запрошенням",
+  profile_approved: "Підтвердження профілю",
+  event_registration: "Підтвердження реєстрації на подію",
+  event_reminder: "Нагадування про подію",
+};
+
+/** Which notification types `userId` opted out of. Missing row = none (all enabled). */
+export async function getDisabledNotificationTypes(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<NotificationType[]> {
+  const { data, error } = await supabase
+    .from("notification_preferences")
+    .select("disabled_types")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("getDisabledNotificationTypes failed:", error.message);
+    return [];
+  }
+
+  return (data?.disabled_types ?? []) as NotificationType[];
+}
+
+/** Enables/disables one notification type, upserting the preferences row. */
+export async function setNotificationTypeEnabled(
+  supabase: SupabaseClient,
+  userId: string,
+  type: NotificationType,
+  enabled: boolean,
+  currentlyDisabled: NotificationType[]
+): Promise<NotificationType[]> {
+  const next = enabled
+    ? currentlyDisabled.filter((t) => t !== type)
+    : currentlyDisabled.includes(type)
+      ? currentlyDisabled
+      : [...currentlyDisabled, type];
+
+  const { error } = await supabase
+    .from("notification_preferences")
+    .upsert({ user_id: userId, disabled_types: next, updated_at: new Date().toISOString() });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+  return next;
 }
 
 /** Ukrainian relative time for a notification row, e.g. "5 хв тому". */

@@ -67,3 +67,65 @@ export async function reportUser(
     throw new Error(error.message);
   }
 }
+
+export type UserReport = {
+  id: string;
+  reporterId: string;
+  reporterName: string;
+  reportedId: string;
+  reportedName: string;
+  reason: string;
+  createdAt: string;
+};
+
+type UserReportRow = {
+  id: string;
+  reporter_id: string;
+  reported_id: string;
+  reason: string;
+  created_at: string;
+  reporter: { full_name: string } | null;
+  reported: { full_name: string } | null;
+};
+
+const USER_REPORT_SELECT =
+  "id, reporter_id, reported_id, reason, created_at, " +
+  "reporter:profiles!user_reports_reporter_id_fkey(full_name), " +
+  "reported:profiles!user_reports_reported_id_fkey(full_name)";
+
+/** Unreviewed reports, oldest first — platform-admin only (see
+ * user_reports_select_admin RLS policy). Nothing read this table before;
+ * without an admin queue, submitted reports were invisible forever. */
+export async function getOpenReports(supabase: SupabaseClient): Promise<UserReport[]> {
+  const { data, error } = await supabase
+    .from("user_reports")
+    .select(USER_REPORT_SELECT)
+    .is("reviewed_at", null)
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    console.error("getOpenReports failed:", error.message);
+    return [];
+  }
+
+  return (data as unknown as UserReportRow[]).map((row) => ({
+    id: row.id,
+    reporterId: row.reporter_id,
+    reporterName: row.reporter?.full_name ?? "Учасник ANEXA",
+    reportedId: row.reported_id,
+    reportedName: row.reported?.full_name ?? "Учасник ANEXA",
+    reason: row.reason,
+    createdAt: row.created_at,
+  }));
+}
+
+export async function markReportReviewed(supabase: SupabaseClient, reportId: string): Promise<void> {
+  const { error } = await supabase
+    .from("user_reports")
+    .update({ reviewed_at: new Date().toISOString(), reviewed_by: (await supabase.auth.getUser()).data.user?.id })
+    .eq("id", reportId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}

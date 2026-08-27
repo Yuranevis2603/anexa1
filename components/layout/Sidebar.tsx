@@ -3,7 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
-import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Calendar, Gift, ShieldCheck, X } from "lucide-react";
+import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Gift, ShieldCheck, X } from "lucide-react";
 
 type NavItem = {
   label: string;
@@ -12,45 +12,68 @@ type NavItem = {
   badge?: number;
 };
 
+type NavSection = {
+  /** Omitted for the first, unlabeled section (Головна). */
+  title?: string;
+  items: NavItem[];
+};
+
 function buildPrimaryNav(
   unreadMessages: number,
   pendingConnections: number,
   unreadNotifications: number,
   isPlatformAdmin: boolean
-): NavItem[] {
-  const items: NavItem[] = [
-    { label: "Головна", href: "/dashboard", icon: Home },
-    { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
-    { label: "Спільноти", href: "/dashboard/communities", icon: Users },
-    { label: "Події", href: "/dashboard/events", icon: Calendar },
+): NavSection[] {
+  const sections: NavSection[] = [
+    { items: [{ label: "Головна", href: "/dashboard", icon: Home }] },
     {
-      label: "Друзі",
-      href: "/dashboard/friends",
-      icon: UserCheck,
-      badge: pendingConnections > 0 ? pendingConnections : undefined,
+      title: "Контент",
+      items: [
+        { label: "Збережені", href: "/dashboard/saved", icon: Bookmark },
+        { label: "Спільноти", href: "/dashboard/communities", icon: Users },
+      ],
     },
     {
-      label: "Повідомлення",
-      href: "/dashboard/messages",
-      icon: MessageCircle,
-      badge: unreadMessages > 0 ? unreadMessages : undefined,
+      title: "Люди",
+      items: [
+        {
+          label: "Друзі",
+          href: "/dashboard/friends",
+          icon: UserCheck,
+          badge: pendingConnections > 0 ? pendingConnections : undefined,
+        },
+        {
+          label: "Повідомлення",
+          href: "/dashboard/messages",
+          icon: MessageCircle,
+          badge: unreadMessages > 0 ? unreadMessages : undefined,
+        },
+        {
+          label: "Сповіщення",
+          href: "/dashboard/notifications",
+          icon: Bell,
+          badge: unreadNotifications > 0 ? unreadNotifications : undefined,
+        },
+      ],
     },
     {
-      label: "Сповіщення",
-      href: "/dashboard/notifications",
-      icon: Bell,
-      badge: unreadNotifications > 0 ? unreadNotifications : undefined,
+      title: "Акаунт",
+      items: [
+        { label: "Профіль", href: "/dashboard/profile", icon: User },
+        { label: "Запросити друга", href: "/dashboard/invite", icon: Gift },
+        { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
+      ],
     },
-    { label: "Профіль", href: "/dashboard/profile", icon: User },
-    { label: "Запросити друга", href: "/dashboard/invite", icon: Gift },
-    { label: "Налаштування", href: "/dashboard/settings", icon: Settings },
   ];
 
   if (isPlatformAdmin) {
-    items.push({ label: "Підтвердження профілів", href: "/dashboard/admin", icon: ShieldCheck });
+    sections.push({
+      title: "Адміністрування",
+      items: [{ label: "Підтвердження профілів", href: "/dashboard/admin", icon: ShieldCheck }],
+    });
   }
 
-  return items;
+  return sections;
 }
 
 function NavLink({
@@ -101,7 +124,7 @@ export default function Sidebar({
   isPlatformAdmin?: boolean;
 }) {
   const activePath = usePathname();
-  const primaryNav = buildPrimaryNav(unreadMessages, pendingConnections, unreadNotifications, isPlatformAdmin);
+  const navSections = buildPrimaryNav(unreadMessages, pendingConnections, unreadNotifications, isPlatformAdmin);
 
   return (
     <aside
@@ -123,14 +146,25 @@ export default function Sidebar({
         </button>
       </div>
 
-      <nav className="flex flex-col gap-1">
-        {primaryNav.map((item) => (
-          <NavLink
-            key={item.href}
-            item={item}
-            active={item.href === activePath}
-            onNavigate={onClose}
-          />
+      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto">
+        {navSections.map((section, i) => (
+          <div key={section.title ?? `section-${i}`} className={i > 0 ? "mt-4" : undefined}>
+            {section.title ? (
+              <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">
+                {section.title}
+              </p>
+            ) : null}
+            <div className="flex flex-col gap-1">
+              {section.items.map((item) => (
+                <NavLink
+                  key={item.href}
+                  item={item}
+                  active={item.href === activePath}
+                  onNavigate={onClose}
+                />
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
     </aside>

@@ -114,6 +114,7 @@ export default function DashboardShell({
   pendingConnections = 0,
   unreadNotifications = 0,
   isPlatformAdmin = false,
+  hideOnlineStatus = false,
 }: {
   children: React.ReactNode;
   userId?: string;
@@ -124,9 +125,10 @@ export default function DashboardShell({
   pendingConnections?: number;
   unreadNotifications?: number;
   isPlatformAdmin?: boolean;
+  hideOnlineStatus?: boolean;
 }) {
   return (
-    <OnlinePresenceProvider userId={userId}>
+    <OnlinePresenceProvider userId={userId} hideOnlineStatus={hideOnlineStatus}>
       <DashboardShellInner
         userId={userId}
         userName={userName}

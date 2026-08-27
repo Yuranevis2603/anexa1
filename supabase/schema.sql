@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-21 (latest: consolidated ProfileView RPCs).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-27 (latest: notification_preferences + profile privacy/deletion columns).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -32,7 +32,14 @@ create table if not exists public.profiles (
   -- Persistent, reusable referral code — assigned once at signup by
   -- handle_new_user(), never regenerated. Distinct from invite_codes,
   -- which stays single-use (closed-beta admission gating).
-  referral_code text unique
+  referral_code text unique,
+  -- Settings → Приватність: when true, OnlinePresenceProvider stops
+  -- broadcasting this member's own presence key.
+  hide_online_status boolean not null default false,
+  -- Settings → danger zone: soft-delete flag set by requestAccountDeletion();
+  -- an admin processes the actual removal (see profile.ts for why this
+  -- isn't an instant hard delete).
+  deletion_requested_at timestamptz
 );
 
 alter table public.profiles enable row level security;
@@ -400,7 +407,11 @@ create table if not exists public.community_livestreams (
   room_name text,
   started_at timestamptz not null default now(),
   ended_at timestamptz,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Bumped every ~45s by the hosting browser (LivestreamPanel) while the
+  -- stream is live; end_stale_livestreams() below auto-ends anything that
+  -- goes quiet for 2+ minutes (host closed the tab without ending it).
+  last_heartbeat_at timestamptz not null default now()
 );
 
 create index if not exists idx_community_livestreams_community_id on public.community_livestreams (community_id);
@@ -424,6 +435,28 @@ create policy "community_livestreams_update_own"
   on public.community_livestreams for update
   to public
   using (host_id = (select auth.uid()));
+
+-- Any authenticated member can trigger this (called from getActiveLivestream
+-- on every "Ефір" tab load); only rows 2+ minutes past their last heartbeat
+-- are touched, so it's a no-op for a genuinely live stream. SECURITY
+-- DEFINER because community_livestreams_update_own only lets the host
+-- update their own row — a stale stream's host is, by definition, gone.
+create or replace function public.end_stale_livestreams(p_community_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.community_livestreams
+  set status = 'ended', ended_at = now()
+  where community_id = p_community_id
+    and status = 'live'
+    and last_heartbeat_at < now() - interval '2 minutes';
+end;
+$$;
+
+grant execute on function public.end_stale_livestreams(uuid) to authenticated;
 
 -- ============================================================================
 -- discussion_threads / discussion_replies
@@ -1167,9 +1200,8 @@ create policy "user_blocks_delete_own"
 
 -- ============================================================================
 -- user_reports
--- Member-filed reports. Reporter can see their own submissions; reviewing
--- reports across all members is a moderator/service-role job, not exposed
--- to the client.
+-- Member-filed reports. Reporter can see their own submissions; platform
+-- admins can see and review every report (Адмін → Скарги користувачів).
 -- ============================================================================
 create table if not exists public.user_reports (
   id uuid primary key default gen_random_uuid(),
@@ -1177,6 +1209,8 @@ create table if not exists public.user_reports (
   reported_id uuid not null references public.profiles(id),
   reason text not null,
   created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewed_by uuid references public.profiles(id),
   constraint user_reports_no_self_report check (reporter_id <> reported_id)
 );
 
@@ -1187,10 +1221,20 @@ create policy "user_reports_select_own"
   to public
   using (reporter_id = (select auth.uid()));
 
+create policy "user_reports_select_admin"
+  on public.user_reports for select
+  to authenticated
+  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.is_platform_admin));
+
 create policy "user_reports_insert_own"
   on public.user_reports for insert
   to public
   with check (reporter_id = (select auth.uid()));
+
+create policy "user_reports_update_admin"
+  on public.user_reports for update
+  to authenticated
+  using (exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.is_platform_admin));
 
 -- ============================================================================
 -- Triggers & functions
@@ -1521,7 +1565,7 @@ create table if not exists public.notifications (
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
-    'referral_joined', 'profile_approved'
+    'referral_joined', 'profile_approved', 'event_registration', 'event_reminder'
   )),
   entity_type text,
   entity_id uuid,
@@ -1543,8 +1587,39 @@ create policy "notifications_update_own"
   to public
   using (user_id = (select auth.uid()));
 
+-- ============================================================================
+-- notification_preferences
+-- One row per member, disabled_types lists notification `type` values they
+-- opted out of via Settings. Missing row / empty array = everything enabled.
+-- Checked inside create_notification() so every existing trigger funnels
+-- through the same guard without needing its own change.
+-- ============================================================================
+create table if not exists public.notification_preferences (
+  user_id uuid primary key references public.profiles(id) on delete cascade,
+  disabled_types text[] not null default '{}',
+  updated_at timestamptz not null default now()
+);
+
+alter table public.notification_preferences enable row level security;
+
+create policy "notification_preferences_select_own"
+  on public.notification_preferences for select
+  to authenticated
+  using (user_id = (select auth.uid()));
+
+create policy "notification_preferences_insert_own"
+  on public.notification_preferences for insert
+  to public
+  with check (user_id = (select auth.uid()));
+
+create policy "notification_preferences_update_own"
+  on public.notification_preferences for update
+  to public
+  using (user_id = (select auth.uid()));
+
 -- Shared writer for every notification-producing trigger below. Never
--- notifies someone about their own action (e.g. liking your own post).
+-- notifies someone about their own action (e.g. liking your own post), and
+-- never inserts a type the recipient disabled in notification_preferences.
 create or replace function public.create_notification(
   p_user_id uuid,
   p_actor_id uuid,
@@ -1561,6 +1636,14 @@ begin
   if p_actor_id is not null and p_actor_id = p_user_id then
     return;
   end if;
+
+  if exists (
+    select 1 from public.notification_preferences np
+    where np.user_id = p_user_id and p_type = any(np.disabled_types)
+  ) then
+    return;
+  end if;
+
   insert into public.notifications (user_id, actor_id, type, entity_type, entity_id)
   values (p_user_id, p_actor_id, p_type, p_entity_type, p_entity_id);
 end;
@@ -1642,6 +1725,62 @@ create trigger trg_notify_new_message
   for each row execute function public.notify_new_message();
 
 revoke execute on function public.notify_new_message() from public, anon, authenticated;
+
+-- Immediate confirmation the moment someone registers for an event.
+create or replace function public.notify_event_registration()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.status = 'registered' then
+    perform public.create_notification(new.user_id, null, 'event_registration', 'event', new.event_id);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_event_registration on public.event_registrations;
+create trigger trg_notify_event_registration
+  after insert on public.event_registrations
+  for each row execute function public.notify_event_registration();
+
+revoke execute on function public.notify_event_registration() from public, anon, authenticated;
+
+-- Run every 15 minutes by pg_cron (job "send_event_reminders", scheduled
+-- below). Notifies every member registered for an event starting in the
+-- next 2 hours, skipping anyone who already got that event's reminder —
+-- idempotent across runs since the job interval is shorter than the window.
+create or replace function public.send_event_reminders()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.notifications (user_id, actor_id, type, entity_type, entity_id)
+  select er.user_id, null, 'event_reminder', 'event', e.id
+  from public.event_registrations er
+  join public.events e on e.id = er.event_id
+  where er.status = 'registered'
+    and e.status = 'published'
+    and e.event_date between now() and now() + interval '2 hours'
+    and not exists (
+      select 1 from public.notifications n
+      where n.user_id = er.user_id and n.type = 'event_reminder' and n.entity_id = e.id
+    );
+end;
+$$;
+
+revoke execute on function public.send_event_reminders() from public, anon, authenticated;
+
+create extension if not exists pg_cron;
+
+select cron.schedule(
+  'send_event_reminders',
+  '*/15 * * * *',
+  $$select public.send_event_reminders();$$
+);
 
 -- Required for the bell's live unread-count subscription to receive
 -- anything at all — RLS alone doesn't put a table on the Realtime wire,
