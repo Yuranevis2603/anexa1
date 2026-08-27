@@ -30,6 +30,9 @@ export const metadata: Metadata = {
     description: DESCRIPTION,
     images: ["/anexa-logo.png"],
   },
+  verification: {
+    google: "Ylo5kLKNbOJRVoU6odBiOQlLFu-vRKMmADeKPcuaW1c",
+  },
 };
 
 export default function RootLayout({
