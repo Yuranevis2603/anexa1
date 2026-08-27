@@ -9,7 +9,9 @@ export type NotificationType =
   | "message"
   | "review"
   | "referral_joined"
-  | "profile_approved";
+  | "profile_approved"
+  | "event_registration"
+  | "event_reminder";
 
 export type Notification = {
   id: string;
@@ -140,6 +142,10 @@ export function describeNotification(n: Notification): { text: string; href: str
       return { text: `${actor} приєднався(лась) за вашим запрошенням`, href: "/dashboard/profile?tab=info" };
     case "profile_approved":
       return { text: "Ваш профіль підтверджено модератором", href: "/dashboard/profile" };
+    case "event_registration":
+      return { text: "Реєстрацію на подію підтверджено", href: "/dashboard/events" };
+    case "event_reminder":
+      return { text: "Подія, на яку ви зареєстровані, скоро розпочнеться", href: "/dashboard/events" };
   }
 }
 
@@ -154,6 +160,8 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   review: "Нові відгуки",
   referral_joined: "Приєднання за моїм запрошенням",
   profile_approved: "Підтвердження профілю",
+  event_registration: "Підтвердження реєстрації на подію",
+  event_reminder: "Нагадування про подію",
 };
 
 /** Which notification types `userId` opted out of. Missing row = none (all enabled). */

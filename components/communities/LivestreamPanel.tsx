@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Loader2, Radio, Video } from "lucide-react";
-import { endLivestream, startLivestream, type Livestream } from "@/lib/livestreams";
+import { endLivestream, pingLivestream, startLivestream, type Livestream } from "@/lib/livestreams";
+import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
+
+/** Well under end_stale_livestreams' 2-minute cutoff so a normal viewer
+ * (whose tab may throttle timers in the background) never gets flagged. */
+const HEARTBEAT_INTERVAL_MS = 45_000;
 
 export default function LivestreamPanel({
   userId,
@@ -29,6 +34,18 @@ export default function LivestreamPanel({
   const [title, setTitle] = useState("");
   const [starting, setStarting] = useState(false);
   const [ending, setEnding] = useState(false);
+
+  // Keep the DB's last_heartbeat_at fresh while this browser is the one
+  // hosting the stream, so a stale-cleanup pass elsewhere never treats a
+  // genuinely live session as abandoned.
+  useEffect(() => {
+    if (!active || active.hostId !== userId) return;
+    const supabase = createClient();
+    const id = setInterval(() => {
+      pingLivestream(supabase, active.id);
+    }, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active, userId]);
 
   async function handleStart(e: React.FormEvent) {
     e.preventDefault();
