@@ -463,7 +463,7 @@ export default function PostCard({
         </button>
       ) : null}
 
-      <div className="mt-3 flex items-center gap-5 border-t border-border-subtle pt-3 text-[12.5px] text-ink-tertiary">
+      <div className="mt-3 flex items-center gap-6 border-t border-border-subtle pt-3.5 text-[13.5px] text-ink-tertiary">
         <button
           type="button"
           onClick={handleToggleLike}
@@ -472,7 +472,7 @@ export default function PostCard({
             liked ? "text-danger" : "hover:text-ink-secondary"
           }`}
         >
-          <Heart size={14} className={liked ? "fill-danger" : undefined} />
+          <Heart size={18} className={liked ? "fill-danger" : undefined} />
           {likeCount}
         </button>
         <button
@@ -480,7 +480,7 @@ export default function PostCard({
           onClick={handleToggleComments}
           className="flex items-center gap-1.5 transition-colors hover:text-ink-secondary"
         >
-          <MessageCircle size={14} />
+          <MessageCircle size={18} />
           {commentCount}
         </button>
         <button
@@ -491,14 +491,14 @@ export default function PostCard({
             saved ? "text-gold" : "hover:text-ink-secondary"
           }`}
         >
-          <Bookmark size={14} className={saved ? "fill-gold" : undefined} />
+          <Bookmark size={18} className={saved ? "fill-gold" : undefined} />
         </button>
         <button
           type="button"
           onClick={handleShare}
           className="ml-auto flex items-center gap-1.5 transition-colors hover:text-ink-secondary"
         >
-          <Share2 size={14} />
+          <Share2 size={18} />
         </button>
       </div>
 
