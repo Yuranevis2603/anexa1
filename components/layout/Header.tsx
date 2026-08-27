@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronDown, LogOut, Menu, Settings, User as UserIcon } from "lucide-react";
+import { ChevronDown, LogOut, Menu, User as UserIcon } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import Avatar from "@/components/ui/Avatar";
 import NotificationBell from "./NotificationBell";
@@ -69,14 +69,6 @@ function UserMenu({
           >
             <UserIcon size={15} />
             Профіль
-          </Link>
-          <Link
-            href="/dashboard/settings"
-            onClick={() => setOpen(false)}
-            className="flex items-center gap-2.5 px-4 py-2.5 text-[13px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary"
-          >
-            <Settings size={15} />
-            Налаштування
           </Link>
           <div className="my-1.5 border-t border-border-subtle" />
           <button
