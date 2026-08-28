@@ -9,8 +9,8 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   icons: {
-    icon: "/anexa-logo.png",
-    apple: "/anexa-logo.png",
+    icon: "/icons/icon-512.png",
+    apple: "/icons/icon-512.png",
   },
   appleWebApp: {
     title: "Anexa Club",
