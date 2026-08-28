@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -21,7 +22,6 @@ import {
   Star,
   Trophy,
   UserPlus,
-  Zap,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { profileCompleteness, type Profile } from "@/lib/profile";
@@ -534,7 +534,7 @@ export default function ProfileView({
             className="glass flex items-center gap-3 rounded-2xl border border-border-subtle p-4 text-left transition-colors hover:bg-white/[0.03]"
           >
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue/10">
-              <Zap size={17} className="text-blue" />
+              <Image src="/coins/ax-mark.png" alt="" width={20} height={20} className="opacity-90" />
             </div>
             <div className="min-w-0">
               <p className="text-[11px] font-medium uppercase tracking-wide text-ink-tertiary">AX</p>
