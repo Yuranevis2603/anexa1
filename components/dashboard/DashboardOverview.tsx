@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { Sparkles, Bell, CalendarClock } from "lucide-react";
+import Image from "next/image";
+import { Bell, CalendarClock } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getLevels, getProfileStats, computeLevelProgress } from "@/lib/gamification";
 import { getTotalUnreadCount } from "@/lib/messages";
@@ -41,7 +42,7 @@ export default async function DashboardOverview({
   const tiles: Tile[] = [
     {
       href: "/dashboard/profile",
-      icon: <Sparkles size={16} />,
+      icon: <Image src="/coins/ax-mark.png" alt="" width={17} height={17} />,
       label: `Рівень ${progress.level} · ${progress.title}`,
       value: `${stats.ax_points} AX`,
       sub: progress.nextLevelAx ? `${progress.progressPercent}% до наступного рівня` : "Максимальний рівень",

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Gift, GitBranch, Link2, MessageCircle, Send, Zap } from "lucide-react";
+import Image from "next/image";
+import { Check, Copy, Gift, GitBranch, Link2, MessageCircle, Send } from "lucide-react";
 import { computeLevelProgress, type Level, type ProfileStats } from "@/lib/gamification";
 import { bucketReferralsByWeek, type Referral } from "@/lib/invites";
 import type { Profile } from "@/lib/profile";
@@ -155,7 +156,7 @@ export default function InviteFriendView({
         <div className="flex flex-col gap-4">
           <div className="glass rounded-2xl border border-border-subtle p-5">
             <div className="flex items-center gap-2">
-              <Zap size={15} className="text-blue" />
+              <Image src="/coins/ax-mark.png" alt="" width={15} height={15} />
               <p className="text-[13px] font-semibold text-ink-primary">
                 Рівень {levelProgress.level} · {levelProgress.title}
               </p>
