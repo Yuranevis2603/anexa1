@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 const TITLE = "Anexa Club — Приватна бізнес-спільнота";
@@ -33,6 +33,10 @@ export const metadata: Metadata = {
   verification: {
     google: "Ylo5kLKNbOJRVoU6odBiOQlLFu-vRKMmADeKPcuaW1c",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#07080D",
 };
 
 export default function RootLayout({
