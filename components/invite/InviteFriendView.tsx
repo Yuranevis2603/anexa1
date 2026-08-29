@@ -9,6 +9,7 @@ import type { Profile } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import AnexaQR from "@/components/profile/AnexaQR";
 
 const DEFAULT_INVITE_TEXT =
   "Привіт! Я в ANEXA — приватній спільноті власників бізнесу. Думаю, тобі буде корисно. Ось моє запрошення:";
@@ -68,7 +69,6 @@ export default function InviteFriendView({
   const shareMessage = `${inviteText}\n${link}`;
   const telegramHref = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(inviteText)}`;
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
-  const qrSrc = link ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(link)}` : "";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -141,14 +141,10 @@ export default function InviteFriendView({
               <MessageCircle size={15} className="text-success" />
               WhatsApp
             </a>
-            {qrSrc ? (
-              <img
-                src={qrSrc}
-                alt="QR-код посилання-запрошення"
-                width={44}
-                height={44}
-                className="shrink-0 rounded-xl border border-border-subtle bg-white p-1"
-              />
+            {link ? (
+              <div className="shrink-0 rounded-xl border border-border-strong bg-base-surface p-1.5">
+                <AnexaQR value={link} size={44} logo={false} />
+              </div>
             ) : null}
           </div>
         </div>
