@@ -1,11 +1,88 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Check, Loader2, Search } from "lucide-react";
+import { Check, Coins, Loader2, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { approveProfile, type AdminUser } from "@/lib/admin";
+import { ADMIN_AX_GRANT_MAX, adminGrantAx, approveProfile, type AdminUser } from "@/lib/admin";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
+import ModalPortal from "@/components/ui/ModalPortal";
+
+function GrantAxModal({ user, onClose }: { user: AdminUser; onClose: () => void }) {
+  const { showToast } = useToast();
+  const [amount, setAmount] = useState("");
+  const [note, setNote] = useState("");
+  const [sending, setSending] = useState(false);
+
+  async function handleGrant() {
+    const parsed = parseInt(amount, 10);
+    if (Number.isNaN(parsed) || parsed <= 0 || parsed > ADMIN_AX_GRANT_MAX) {
+      showToast("error", `Введіть кількість AX від 1 до ${ADMIN_AX_GRANT_MAX}.`);
+      return;
+    }
+    setSending(true);
+    try {
+      await adminGrantAx(createClient(), user.id, parsed, note.trim());
+      showToast("success", `Нараховано ${parsed} AX користувачу ${user.fullName}.`);
+      onClose();
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Не вдалося нарахувати AX.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <ModalPortal>
+      <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 sm:items-center sm:px-4" onClick={onClose} role="presentation">
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="glass w-full max-w-sm rounded-t-2xl border border-border-subtle bg-base-card p-5 sm:rounded-2xl"
+        >
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Coins size={16} className="text-purple-soft" />
+              <p className="text-[13.5px] font-semibold text-ink-primary">Нарахувати AX</p>
+            </div>
+            <button type="button" onClick={onClose} aria-label="Закрити" className="rounded-lg p-1 text-ink-tertiary hover:bg-white/[0.06] hover:text-ink-primary">
+              <X size={16} />
+            </button>
+          </div>
+          <p className="mt-1.5 text-[12px] text-ink-tertiary">{user.fullName}</p>
+
+          <label className="mt-4 block text-[11.5px] font-medium text-ink-tertiary">Кількість AX (макс. {ADMIN_AX_GRANT_MAX})</label>
+          <input
+            value={amount}
+            onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ""))}
+            inputMode="numeric"
+            placeholder="0"
+            autoFocus
+            className="mt-1.5 w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[13px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-1 focus:ring-purple/40"
+          />
+
+          <label className="mt-3 block text-[11.5px] font-medium text-ink-tertiary">Причина (необов&apos;язково)</label>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            maxLength={200}
+            placeholder="Наприклад: приз конкурсу"
+            className="mt-1.5 w-full rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[13px] text-ink-primary placeholder:text-ink-tertiary focus:outline-none focus:ring-1 focus:ring-purple/40"
+          />
+
+          <button
+            type="button"
+            onClick={handleGrant}
+            disabled={sending || !amount}
+            className="mt-4 flex w-full items-center justify-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2.5 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity disabled:opacity-60"
+          >
+            {sending ? <Loader2 size={14} className="animate-spin" /> : <Coins size={14} />}
+            Нарахувати
+          </button>
+        </div>
+      </div>
+    </ModalPortal>
+  );
+}
 
 type StatusFilter = "all" | "active" | "pending";
 
@@ -25,6 +102,7 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<StatusFilter>("all");
   const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [grantTarget, setGrantTarget] = useState<AdminUser | null>(null);
 
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -158,6 +236,14 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
                         >
                           Переглянути
                         </a>
+                        <button
+                          type="button"
+                          onClick={() => setGrantTarget(u)}
+                          className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-2.5 py-1.5 text-[12px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary"
+                        >
+                          <Coins size={12} />
+                          AX
+                        </button>
                         {!u.isApproved ? (
                           <button
                             type="button"
@@ -178,6 +264,8 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
           </table>
         </div>
       </div>
+
+      {grantTarget ? <GrantAxModal user={grantTarget} onClose={() => setGrantTarget(null)} /> : null}
     </div>
   );
 }
