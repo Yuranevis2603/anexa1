@@ -9,6 +9,7 @@ import type { Profile } from "@/lib/profile";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
+import QrCode from "@/components/ui/QrCode";
 
 const DEFAULT_INVITE_TEXT =
   "Привіт! Я в ANEXA — приватній спільноті власників бізнесу. Думаю, тобі буде корисно. Ось моє запрошення:";
@@ -47,8 +48,11 @@ export default function InviteFriendView({
   const [copied, setCopied] = useState(false);
 
   const code = profile.referral_code;
-  const link = code && typeof window !== "undefined" ? `${window.location.origin}/register?invite=${code}` : "";
-  const linkDisplay = code ? `anexa.club/register?invite=${code}` : "—";
+  // /u/<code> is a smart redirect: signed-in scanners land on this profile
+  // directly, signed-out ones go through the same /register?invite= flow
+  // this link used to point at (see app/u/[code]/route.ts).
+  const link = code && typeof window !== "undefined" ? `${window.location.origin}/u/${code}` : "";
+  const linkDisplay = code ? `anexa.club/u/${code}` : "—";
 
   const levelProgress = computeLevelProgress(stats.ax_points, levels);
   const weeks = bucketReferralsByWeek(referrals, 10);
@@ -68,7 +72,6 @@ export default function InviteFriendView({
   const shareMessage = `${inviteText}\n${link}`;
   const telegramHref = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(inviteText)}`;
   const whatsappHref = `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
-  const qrSrc = link ? `https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(link)}` : "";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -141,14 +144,10 @@ export default function InviteFriendView({
               <MessageCircle size={15} className="text-success" />
               WhatsApp
             </a>
-            {qrSrc ? (
-              <img
-                src={qrSrc}
-                alt="QR-код посилання-запрошення"
-                width={44}
-                height={44}
-                className="shrink-0 rounded-xl border border-border-subtle bg-white p-1"
-              />
+            {code ? (
+              <div className="shrink-0 rounded-xl border border-border-subtle bg-white p-1">
+                <QrCode value={link} size={44} />
+              </div>
             ) : null}
           </div>
         </div>

@@ -17,6 +17,7 @@ import {
   MoreHorizontal,
   Pencil,
   Plus,
+  QrCode as QrCodeIcon,
   Share2,
   Sparkles,
   Star,
@@ -48,6 +49,7 @@ import EditProfileModal from "./EditProfileModal";
 import CreateProjectModal from "./CreateProjectModal";
 import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
+import ProfileQrModal from "./ProfileQrModal";
 import GamificationInfoModal from "./GamificationInfoModal";
 import PostCard from "@/components/feed/PostCard";
 import ProfilePreviewCard from "./ProfilePreviewCard";
@@ -169,6 +171,7 @@ export default function ProfileView({
   const [hasReviewed, setHasReviewed] = useState(false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [qrModalOpen, setQrModalOpen] = useState(false);
   const [gamificationInfoOpen, setGamificationInfoOpen] = useState(false);
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -479,6 +482,17 @@ export default function ProfileView({
             >
               <Share2 size={15} /> {viewerIsOwner ? "Копіювати посилання" : "Поділитися профілем"}
             </button>
+            {viewerIsOwner && current.referral_code ? (
+              <button
+                onClick={() => {
+                  setMenuOpen(false);
+                  setQrModalOpen(true);
+                }}
+                className="flex w-full items-center gap-2.5 border-t border-border-subtle px-4 py-3.5 text-left text-[13.5px] text-ink-primary transition-colors hover:bg-white/[0.05]"
+              >
+                <QrCodeIcon size={15} /> Показати QR-код
+              </button>
+            ) : null}
             {canInteract ? (
               <>
                 {!hasReviewed ? (
@@ -926,6 +940,10 @@ export default function ProfileView({
 
       {gamificationInfoOpen ? (
         <GamificationInfoModal levels={levels} onClose={() => setGamificationInfoOpen(false)} />
+      ) : null}
+
+      {qrModalOpen && current.referral_code ? (
+        <ProfileQrModal code={current.referral_code} onClose={() => setQrModalOpen(false)} />
       ) : null}
 
       {followListOpen ? (
