@@ -107,31 +107,33 @@ export default function MyQRModal({ profile, onClose }: { profile: Profile; onCl
             {tab === "profile" ? "Скануйте, щоб відкрити профіль" : "Скануйте, щоб зареєструватись за запрошенням"}
           </p>
 
-          <div className="mt-4 flex gap-2.5">
+          <div className="mt-4 flex gap-2">
             <button
               type="button"
               onClick={handleCopy}
-              className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl px-4 py-2.5 text-[12.5px] font-medium transition-colors ${
+              className={`flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl px-2 py-2.5 text-[12px] font-medium transition-colors ${
                 copied ? "bg-success text-white" : "border border-border-subtle text-ink-primary hover:bg-white/[0.06]"
               }`}
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              {copied ? "Скопійовано" : "Копіювати"}
+              {copied ? <Check size={14} className="shrink-0" /> : <Copy size={14} className="shrink-0" />}
+              <span className="truncate">{copied ? "Готово" : "Копіювати"}</span>
             </button>
             <a
               href={telegramHref}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-4 py-2.5 text-[12.5px] font-medium text-ink-primary transition-colors hover:bg-white/[0.06]"
+              className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl border border-border-subtle px-2 py-2.5 text-[12px] font-medium text-ink-primary transition-colors hover:bg-white/[0.06]"
             >
-              <Send size={14} /> Telegram
+              <Send size={14} className="shrink-0" />
+              <span className="truncate">Telegram</span>
             </a>
             <button
               type="button"
               onClick={handleShare}
-              className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-grad-purple-blue px-4 py-2.5 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+              className="flex min-w-0 flex-1 items-center justify-center gap-1.5 rounded-xl bg-grad-purple-blue px-2 py-2.5 text-[12px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
             >
-              <Share2 size={14} /> Поділитися
+              <Share2 size={14} className="shrink-0" />
+              <span className="truncate">Поділитися</span>
             </button>
           </div>
         </div>
