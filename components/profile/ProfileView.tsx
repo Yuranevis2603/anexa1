@@ -51,7 +51,6 @@ import ReviewModal from "./ReviewModal";
 import ReportModal from "./ReportModal";
 import GamificationInfoModal from "./GamificationInfoModal";
 import MyQRModal from "./MyQRModal";
-import AnexaQR from "./AnexaQR";
 import PostCard from "@/components/feed/PostCard";
 import ProfilePreviewCard from "./ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
@@ -469,27 +468,6 @@ export default function ProfileView({
           </div>
         </div>
       </section>
-
-      {viewerIsOwner ? (
-        <section className="glass mt-4 flex items-center gap-5 rounded-2xl border border-border-subtle p-5">
-          <button
-            type="button"
-            onClick={() => setQrOpen(true)}
-            className="flex shrink-0 items-center justify-center rounded-[18px] border border-border-strong bg-base-surface p-2.5"
-            style={{ width: 104, height: 104 }}
-          >
-            <AnexaQR value={`https://anexa.club/dashboard/people/${current.id}`} size={84} logo={false} />
-          </button>
-          <div className="min-w-0 flex-1">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Мій QR</p>
-            <p className="mt-1.5 text-[14px] font-medium text-ink-primary">Один код — профіль і запрошення в ANEXA</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-ink-secondary">
-              Покажіть екран на зустрічі — камера відкриє ваш профіль. У режимі запрошення код веде на реєстрацію за
-              вашим реферальним кодом.
-            </p>
-          </div>
-        </section>
-      ) : null}
 
       {/* An anchored dropdown here fights flex-wrap on narrow screens (the
           "..." button isn't always pinned to a screen edge), so this is a
