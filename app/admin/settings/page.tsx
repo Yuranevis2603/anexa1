@@ -1,12 +1,12 @@
-import { Settings } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminLevels } from "@/lib/admin";
+import AdminLevelsSettings from "@/components/admin/AdminLevelsSettings";
 
-export default function AdminSettingsPage() {
-  return (
-    <ComingSoon
-      icon={Settings}
-      title="Налаштування"
-      note="Налаштування платформи (ліміти AX, рівні тощо) поки редагуються напряму в базі даних."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminSettingsPage() {
+  const supabase = createClient();
+  const levels = await getAdminLevels(supabase);
+
+  return <AdminLevelsSettings initialLevels={levels} />;
 }

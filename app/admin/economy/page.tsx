@@ -1,12 +1,12 @@
-import { Coins } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminAxStats } from "@/lib/admin";
+import AdminEconomy from "@/components/admin/AdminEconomy";
 
-export default function AdminEconomyPage() {
-  return (
-    <ComingSoon
-      icon={Coins}
-      title="AX Економіка"
-      note="Загальний дашборд емісії й витрат AX ще не підключено — платформа поки не веде окремий облік економіки AX за межами балансів окремих користувачів."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminEconomyPage() {
+  const supabase = createClient();
+  const stats = await getAdminAxStats(supabase);
+
+  return <AdminEconomy stats={stats} />;
 }

@@ -1,12 +1,12 @@
-import { BarChart3 } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminAnalytics } from "@/lib/admin";
+import AdminAnalyticsView from "@/components/admin/AdminAnalyticsView";
 
-export default function AdminAnalyticsPage() {
-  return (
-    <ComingSoon
-      icon={BarChart3}
-      title="Аналітика"
-      note="Розширена аналітика (воронки, ретеншн, когорти) ще не підключена — базові цифри поки дивіться на сторінці «Огляд»."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminAnalyticsPage() {
+  const supabase = createClient();
+  const analytics = await getAdminAnalytics(supabase);
+
+  return <AdminAnalyticsView analytics={analytics} />;
 }

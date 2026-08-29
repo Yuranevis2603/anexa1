@@ -1,12 +1,12 @@
-import { Radio } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminEventsAndLive } from "@/lib/admin";
+import AdminEventsLive from "@/components/admin/AdminEventsLive";
 
-export default function AdminEventsPage() {
-  return (
-    <ComingSoon
-      icon={Radio}
-      title="Події та Live"
-      note="Загальний огляд подій і трансляцій усіх спільнот в адмінці ще не готовий — самі події вже можна створювати й вести зі сторінки кожної спільноти."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminEventsPage() {
+  const supabase = createClient();
+  const { events, livestreams } = await getAdminEventsAndLive(supabase);
+
+  return <AdminEventsLive events={events} livestreams={livestreams} />;
 }

@@ -1,12 +1,12 @@
-import { ScrollText } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminAuditLog } from "@/lib/admin";
+import AdminAuditLogView from "@/components/admin/AdminAuditLogView";
 
-export default function AdminAuditLogPage() {
-  return (
-    <ComingSoon
-      icon={ScrollText}
-      title="Журнал дій"
-      note="Аудит-лог дій адміністраторів ще не ведеться — його потрібно буде додати окремою таблицею в базі даних."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminAuditLogPage() {
+  const supabase = createClient();
+  const entries = await getAdminAuditLog(supabase);
+
+  return <AdminAuditLogView entries={entries} />;
 }

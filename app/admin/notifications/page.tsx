@@ -1,12 +1,12 @@
-import { Bell } from "lucide-react";
-import ComingSoon from "@/components/admin/ComingSoon";
+import { createClient } from "@/lib/supabase/server";
+import { getAdminOverviewStats } from "@/lib/admin";
+import AdminBroadcast from "@/components/admin/AdminBroadcast";
 
-export default function AdminNotificationsPage() {
-  return (
-    <ComingSoon
-      icon={Bell}
-      title="Сповіщення"
-      note="Розсилка сповіщень усім користувачам з адмінки ще не реалізована."
-    />
-  );
+export const dynamic = "force-dynamic";
+
+export default async function AdminNotificationsPage() {
+  const supabase = createClient();
+  const stats = await getAdminOverviewStats(supabase);
+
+  return <AdminBroadcast totalUsers={stats.totalUsers} />;
 }
