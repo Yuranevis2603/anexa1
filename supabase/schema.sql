@@ -1073,7 +1073,7 @@ create table if not exists public.conversation_calls (
   ended_at timestamptz,
   -- Bumped every ~45s by whichever browser(s) are actively in the call;
   -- end_stale_calls() below auto-misses a 'ringing' row nobody answered
-  -- within 45s, and auto-ends an 'active' row that goes quiet for 2+
+  -- within 60s, and auto-ends an 'active' row that goes quiet for 2+
   -- minutes (tab crash/force-quit mid-call) -- same shape as
   -- community_livestreams.last_heartbeat_at / end_stale_livestreams.
   last_heartbeat_at timestamptz not null default now(),
@@ -1127,7 +1127,7 @@ begin
   update public.conversation_calls
   set status = 'missed', ended_at = now()
   where status = 'ringing'
-    and started_at < now() - interval '45 seconds';
+    and started_at < now() - interval '60 seconds';
 
   update public.conversation_calls
   set status = 'ended', ended_at = now()
