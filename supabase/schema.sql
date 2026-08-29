@@ -1049,6 +1049,103 @@ create policy "messages_insert_participant"
   );
 
 -- ============================================================================
+-- conversation_calls
+-- 1:1 audio/video calls between two conversation participants, backed by
+-- Daily.co PRIVATE rooms + per-participant meeting tokens (see
+-- app/api/calls/route.ts and app/api/calls/[callId]/join/route.ts). Unlike
+-- community_livestreams' public rooms, room_url alone is NOT enough to
+-- join -- every participant needs their own meeting token minted
+-- server-side after an authorization check (must be caller_id or
+-- callee_id of the row).
+-- ============================================================================
+create table if not exists public.conversation_calls (
+  id uuid primary key default gen_random_uuid(),
+  conversation_id uuid not null references public.conversations(id),
+  caller_id uuid not null references public.profiles(id),
+  callee_id uuid not null references public.profiles(id),
+  kind text not null check (kind in ('audio', 'video')),
+  status text not null default 'ringing'
+    check (status in ('ringing', 'active', 'declined', 'cancelled', 'missed', 'ended')),
+  room_url text,
+  room_name text,
+  started_at timestamptz not null default now(),
+  answered_at timestamptz,
+  ended_at timestamptz,
+  -- Bumped every ~45s by whichever browser(s) are actively in the call;
+  -- end_stale_calls() below auto-misses a 'ringing' row nobody answered
+  -- within 45s, and auto-ends an 'active' row that goes quiet for 2+
+  -- minutes (tab crash/force-quit mid-call) -- same shape as
+  -- community_livestreams.last_heartbeat_at / end_stale_livestreams.
+  last_heartbeat_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  check (caller_id <> callee_id)
+);
+
+create index if not exists idx_conversation_calls_conversation_id on public.conversation_calls (conversation_id);
+create index if not exists idx_conversation_calls_callee_active on public.conversation_calls (callee_id) where status in ('ringing', 'active');
+create index if not exists idx_conversation_calls_caller_active on public.conversation_calls (caller_id) where status in ('ringing', 'active');
+
+alter table public.conversation_calls enable row level security;
+
+create policy "conversation_calls_select_participant"
+  on public.conversation_calls for select
+  to public
+  using (caller_id = (select auth.uid()) or callee_id = (select auth.uid()));
+
+create policy "conversation_calls_insert_caller"
+  on public.conversation_calls for insert
+  to public
+  with check (
+    caller_id = (select auth.uid())
+    and exists (
+      select 1 from public.conversation_participants p
+      where p.conversation_id = conversation_calls.conversation_id
+        and p.user_id = (select auth.uid())
+    )
+    and exists (
+      select 1 from public.conversation_participants p
+      where p.conversation_id = conversation_calls.conversation_id
+        and p.user_id = conversation_calls.callee_id
+    )
+  );
+
+-- Both sides can transition status (answer/decline/hang up) and bump the
+-- heartbeat; not column-restricted, same permissiveness as
+-- community_livestreams_update_own.
+create policy "conversation_calls_update_participant"
+  on public.conversation_calls for update
+  to public
+  using (caller_id = (select auth.uid()) or callee_id = (select auth.uid()));
+
+create or replace function public.end_stale_calls()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  update public.conversation_calls
+  set status = 'missed', ended_at = now()
+  where status = 'ringing'
+    and started_at < now() - interval '45 seconds';
+
+  update public.conversation_calls
+  set status = 'ended', ended_at = now()
+  where status = 'active'
+    and last_heartbeat_at < now() - interval '2 minutes';
+end;
+$$;
+
+grant execute on function public.end_stale_calls() to authenticated;
+
+-- Required for the app-wide incoming-call subscription (CallProvider) to
+-- receive anything at all -- RLS alone does not put a table on the
+-- Realtime wire (same gotcha as messages/conversation_participants, which
+-- are on this publication too even though they weren't added via this
+-- file's own migrations).
+alter publication supabase_realtime add table public.conversation_calls;
+
+-- ============================================================================
 -- levels
 -- Reference ladder for the AX -> level display on profiles. Seeded once;
 -- no client insert/update policy — managed via migration only.
