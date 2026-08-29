@@ -1565,10 +1565,15 @@ create table if not exists public.notifications (
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
-    'referral_joined', 'profile_approved', 'event_registration', 'event_reminder'
+    'referral_joined', 'profile_approved', 'event_registration', 'event_reminder', 'admin_broadcast'
   )),
   entity_type text,
   entity_id uuid,
+  -- Set only for 'admin_broadcast' (see admin_broadcast_notification below)
+  -- — every other type keeps rendering fixed per-type text client-side via
+  -- describeNotification(), so these stay null for them.
+  title text,
+  body text,
   read_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -1653,7 +1658,8 @@ revoke execute on function public.create_notification(uuid, uuid, text, text, uu
 
 -- Closed-beta profile approval, gated on profiles.is_platform_admin. profiles
 -- itself has no admin-only update policy, so this SECURITY DEFINER function
--- is the only way is_approved ever flips true after signup.
+-- is the only way is_approved ever flips true after signup. Also logs to
+-- admin_audit_log (see Admin panel section near the end of this file).
 create or replace function public.approve_profile(p_user_id uuid)
 returns void
 language plpgsql
@@ -1672,6 +1678,7 @@ begin
 
   if found then
     perform public.create_notification(p_user_id, null, 'profile_approved', 'profile', p_user_id);
+    perform public.log_admin_action((select auth.uid()), 'approve_profile', 'profile', p_user_id, null);
   end if;
 end;
 $$;
@@ -2132,3 +2139,180 @@ create policy "Users can delete their own post images"
   on storage.objects for delete
   to authenticated
   using (bucket_id = 'post-images' and (storage.foldername(name))[1] = (auth.uid())::text);
+
+-- ============================================================================
+-- Admin panel
+-- Everything the /admin section needs beyond what already existed
+-- (approve_profile, getOpenReports/markReportReviewed, select-all reads of
+-- profiles/communities/events/community_livestreams): post moderation,
+-- platform-wide AX stats, level editing, and a broadcast notification tool
+-- — plus an audit log every one of these writes to.
+-- ============================================================================
+create table if not exists public.admin_audit_log (
+  id uuid primary key default gen_random_uuid(),
+  admin_id uuid not null references public.profiles(id),
+  action text not null,
+  target_type text,
+  target_id uuid,
+  detail text,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_admin_audit_log_created_at on public.admin_audit_log (created_at desc);
+
+alter table public.admin_audit_log enable row level security;
+
+create policy "admin_audit_log_select_admin"
+  on public.admin_audit_log for select
+  to authenticated
+  using (exists (select 1 from public.profiles where id = (select auth.uid()) and is_platform_admin));
+
+create or replace function public.log_admin_action(
+  p_admin_id uuid,
+  p_action text,
+  p_target_type text,
+  p_target_id uuid,
+  p_detail text
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.admin_audit_log (admin_id, action, target_type, target_id, detail)
+  values (p_admin_id, p_action, p_target_type, p_target_id, p_detail);
+end;
+$$;
+
+revoke execute on function public.log_admin_action(uuid, text, text, uuid, text) from public, anon, authenticated;
+
+-- Platform-admin post moderation — regular delete RLS is owner-only, or
+-- community staff for community posts only.
+create or replace function public.admin_delete_post(p_post_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := (select auth.uid());
+  v_body text;
+begin
+  if not exists (select 1 from public.profiles where id = v_admin and is_platform_admin) then
+    raise exception 'Not authorized';
+  end if;
+
+  select left(body, 120) into v_body from public.activity_items where id = p_post_id;
+
+  delete from public.activity_items where id = p_post_id;
+
+  if found then
+    perform public.log_admin_action(v_admin, 'delete_post', 'activity_item', p_post_id, v_body);
+  end if;
+end;
+$$;
+
+grant execute on function public.admin_delete_post(uuid) to authenticated;
+
+-- Sends one notification to every member (skips whoever opted out of the
+-- 'admin_broadcast' type via notification_preferences, same mechanism every
+-- other type already respects).
+create or replace function public.admin_broadcast_notification(p_title text, p_body text)
+returns integer
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := (select auth.uid());
+  v_count integer := 0;
+begin
+  if not exists (select 1 from public.profiles where id = v_admin and is_platform_admin) then
+    raise exception 'Not authorized';
+  end if;
+
+  if coalesce(trim(p_title), '') = '' then
+    raise exception 'Title is required';
+  end if;
+
+  insert into public.notifications (user_id, actor_id, type, title, body)
+  select p.id, v_admin, 'admin_broadcast', p_title, p_body
+  from public.profiles p
+  where p.id <> v_admin
+    and not exists (
+      select 1 from public.notification_preferences np
+      where np.user_id = p.id and 'admin_broadcast' = any(np.disabled_types)
+    );
+
+  get diagnostics v_count = row_count;
+
+  perform public.log_admin_action(v_admin, 'broadcast_notification', 'notification', null, p_title || ' (' || v_count || ' отримувачів)');
+
+  return v_count;
+end;
+$$;
+
+grant execute on function public.admin_broadcast_notification(text, text) to authenticated;
+
+-- Circulation totals + top earners. profile_gamification is select-own only
+-- via RLS, so this is the only way an admin sees the aggregate picture.
+create or replace function public.admin_get_ax_stats()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := (select auth.uid());
+  v_result jsonb;
+begin
+  if not exists (select 1 from public.profiles where id = v_admin and is_platform_admin) then
+    raise exception 'Not authorized';
+  end if;
+
+  select jsonb_build_object(
+    'totalAxEarned', coalesce(sum(pg.ax_points), 0),
+    'totalAxBalance', coalesce(sum(pg.ax_balance), 0),
+    'topEarners', (
+      select coalesce(jsonb_agg(jsonb_build_object('id', p.id, 'fullName', p.full_name, 'axPoints', pg2.ax_points) order by pg2.ax_points desc), '[]'::jsonb)
+      from (
+        select user_id, ax_points from public.profile_gamification order by ax_points desc limit 10
+      ) pg2
+      join public.profiles p on p.id = pg2.user_id
+    )
+  )
+  into v_result
+  from public.profile_gamification pg;
+
+  return v_result;
+end;
+$$;
+
+grant execute on function public.admin_get_ax_stats() to authenticated;
+
+-- Edit an existing level's title/threshold, or add a new one. levels has no
+-- admin-write RLS policy (select-all only), so this SECURITY DEFINER
+-- function is the only way to change it.
+create or replace function public.admin_upsert_level(p_level integer, p_title text, p_min_ax integer)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := (select auth.uid());
+begin
+  if not exists (select 1 from public.profiles where id = v_admin and is_platform_admin) then
+    raise exception 'Not authorized';
+  end if;
+
+  insert into public.levels (level, title, min_ax)
+  values (p_level, p_title, p_min_ax)
+  on conflict (level) do update set title = excluded.title, min_ax = excluded.min_ax;
+
+  perform public.log_admin_action(v_admin, 'update_level', 'level', null, 'Level ' || p_level || ': ' || p_title || ' (' || p_min_ax || '+ AX)');
+end;
+$$;
+
+grant execute on function public.admin_upsert_level(integer, text, integer) to authenticated;

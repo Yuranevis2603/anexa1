@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, CalendarClock, Check, CheckCheck, Heart, MessageCircle, Star, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, Check, CheckCheck, Heart, Megaphone, MessageCircle, Star, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   describeNotification,
@@ -27,6 +27,7 @@ const TYPE_ICON: Record<NotificationType, { Icon: typeof Heart; className: strin
   profile_approved: { Icon: BadgeCheck, className: "bg-blue/10 text-blue" },
   event_registration: { Icon: CalendarClock, className: "bg-purple/10 text-purple-soft" },
   event_reminder: { Icon: CalendarClock, className: "bg-gold/10 text-gold" },
+  admin_broadcast: { Icon: Megaphone, className: "bg-purple/10 text-purple-soft" },
 };
 
 export default function NotificationsView({

@@ -11,7 +11,8 @@ export type NotificationType =
   | "referral_joined"
   | "profile_approved"
   | "event_registration"
-  | "event_reminder";
+  | "event_reminder"
+  | "admin_broadcast";
 
 export type Notification = {
   id: string;
@@ -21,6 +22,10 @@ export type Notification = {
   actorId: string | null;
   actorName: string | null;
   actorAvatarUrl: string | null;
+  /** Only populated for 'admin_broadcast' — every other type renders fixed
+   * per-type text via describeNotification() instead. */
+  title: string | null;
+  body: string | null;
   readAt: string | null;
   createdAt: string;
 };
@@ -31,13 +36,15 @@ type NotificationRow = {
   entity_type: string | null;
   entity_id: string | null;
   actor_id: string | null;
+  title: string | null;
+  body: string | null;
   read_at: string | null;
   created_at: string;
   actor: { full_name: string; avatar_url: string | null } | null;
 };
 
 const NOTIFICATION_SELECT =
-  "id, type, entity_type, entity_id, actor_id, read_at, created_at, actor:profiles!notifications_actor_id_fkey(full_name, avatar_url)";
+  "id, type, entity_type, entity_id, actor_id, title, body, read_at, created_at, actor:profiles!notifications_actor_id_fkey(full_name, avatar_url)";
 
 function toNotification(row: NotificationRow): Notification {
   return {
@@ -48,6 +55,8 @@ function toNotification(row: NotificationRow): Notification {
     actorId: row.actor_id,
     actorName: row.actor?.full_name ?? null,
     actorAvatarUrl: row.actor?.avatar_url ?? null,
+    title: row.title,
+    body: row.body,
     readAt: row.read_at,
     createdAt: row.created_at,
   };
@@ -146,6 +155,8 @@ export function describeNotification(n: Notification): { text: string; href: str
       return { text: "Реєстрацію на подію підтверджено", href: "/dashboard/events" };
     case "event_reminder":
       return { text: "Подія, на яку ви зареєстровані, скоро розпочнеться", href: "/dashboard/events" };
+    case "admin_broadcast":
+      return { text: n.title ?? "Повідомлення від адміністрації", href: "/dashboard/notifications" };
   }
 }
 
@@ -162,6 +173,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   profile_approved: "Підтвердження профілю",
   event_registration: "Підтвердження реєстрації на подію",
   event_reminder: "Нагадування про подію",
+  admin_broadcast: "Повідомлення від адміністрації",
 };
 
 /** Which notification types `userId` opted out of. Missing row = none (all enabled). */
