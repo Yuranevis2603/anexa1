@@ -6,6 +6,8 @@ const ACTION_LABELS: Record<string, string> = {
   delete_post: "Видалив(ла) пост",
   broadcast_notification: "Надіслав(ла) розсилку",
   update_level: "Змінив(ла) рівень",
+  grant_ax: "Нарахував(ла) AX",
+  deduct_ax: "Зняв(ла) AX",
 };
 
 function formatDate(iso: string): string {

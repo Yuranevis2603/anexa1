@@ -1122,7 +1122,7 @@ create table if not exists public.ax_events (
   source text not null check (source in (
     'profile_completion', 'post', 'like_received', 'comment_received',
     'connection_accepted', 'follower_received', 'project_added', 'review_received',
-    'referral', 'admin_grant'
+    'referral', 'admin_grant', 'admin_deduct'
   )),
   amount integer not null,
   created_at timestamptz not null default now()
@@ -2359,3 +2359,44 @@ end;
 $$;
 
 grant execute on function public.admin_grant_ax(uuid, integer, text) to authenticated;
+
+-- Manual AX deduction for one member, symmetric to admin_grant_ax — capped
+-- at 1000 per call, floors at 0 so it can never send a member negative.
+create or replace function public.admin_deduct_ax(p_user_id uuid, p_amount integer, p_note text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_admin uuid := (select auth.uid());
+begin
+  if not exists (select 1 from public.profiles where id = v_admin and is_platform_admin) then
+    raise exception 'Not authorized';
+  end if;
+
+  if p_amount is null or p_amount <= 0 or p_amount > 1000 then
+    raise exception 'Amount must be between 1 and 1000 AX';
+  end if;
+
+  if not exists (select 1 from public.profiles where id = p_user_id) then
+    raise exception 'User not found';
+  end if;
+
+  insert into public.ax_events (user_id, source, amount) values (p_user_id, 'admin_deduct', -p_amount);
+
+  insert into public.profile_gamification (user_id, ax_points, ax_balance)
+  values (p_user_id, 0, 0)
+  on conflict (user_id) do update
+    set ax_points = greatest(0, public.profile_gamification.ax_points - p_amount),
+        ax_balance = greatest(0, public.profile_gamification.ax_balance - p_amount),
+        updated_at = now();
+
+  perform public.log_admin_action(
+    v_admin, 'deduct_ax', 'profile', p_user_id,
+    p_amount::text || ' AX' || (case when coalesce(trim(p_note), '') <> '' then ' — ' || p_note else '' end)
+  );
+end;
+$$;
+
+grant execute on function public.admin_deduct_ax(uuid, integer, text) to authenticated;
