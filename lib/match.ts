@@ -50,13 +50,26 @@ export function computeMatchScore(
 
 /**
  * Finds the single best potential match for `me` among other approved
- * members, based on skills/interests/business-goals overlap. Returns null
- * when there isn't enough profile signal to produce a meaningful match.
+ * members, based on skills/interests/business-goals overlap. Excludes
+ * anyone `me` already has a connection with (accepted or pending, either
+ * direction) — once a match's been acted on it should drop out of the
+ * feed instead of being suggested forever. Returns null when there isn't
+ * enough profile signal to produce a meaningful match.
  */
 export async function getTopMatch(
   supabase: SupabaseClient,
   me: Pick<Profile, "id" | "skills" | "interests" | "business_goals">
 ): Promise<MatchCandidate | null> {
+  const { data: connections } = await supabase
+    .from("connections")
+    .select("requester_id, addressee_id")
+    .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`);
+
+  const excluded = new Set<string>([me.id]);
+  for (const c of (connections ?? []) as { requester_id: string; addressee_id: string }[]) {
+    excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
+  }
+
   const { data, error } = await supabase
     .from("profiles")
     .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
@@ -70,6 +83,7 @@ export async function getTopMatch(
 
   let best: MatchCandidate | null = null;
   for (const other of data as (MatchProfile & { business_goals: string[] })[]) {
+    if (excluded.has(other.id)) continue;
     const { score, overlappingTags } = computeMatchScore(me, other);
     if (score > 0 && (!best || score > best.score)) {
       best = { profile: other, score, overlappingTags };
