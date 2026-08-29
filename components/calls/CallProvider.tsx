@@ -7,6 +7,7 @@ import {
   cancelCall,
   declineCall,
   endCall,
+  getCallById,
   getMyActiveCall,
   joinCall,
   pingCall,
@@ -20,8 +21,9 @@ import IncomingCallModal from "./IncomingCallModal";
 import OutgoingCallOverlay from "./OutgoingCallOverlay";
 import InCallView from "./InCallView";
 
-const RING_TIMEOUT_MS = 45_000;
+const RING_TIMEOUT_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 45_000;
+const POLL_INTERVAL_MS = 3_000;
 
 type Peer = { id: string; fullName: string; avatarUrl: string | null };
 type Entry = { roomUrl: string; token: string };
@@ -164,7 +166,26 @@ export default function CallProvider({ userId, children }: { userId: string | un
       });
   }, [call, showToast]);
 
-  // Caller-side auto-give-up: mirrors the 45s threshold end_stale_calls()
+  // Safety net on top of the postgres_changes subscription above: a
+  // backgrounded mobile tab (screen lock, app-switch while waiting for the
+  // other side to pick up) can miss a WebSocket event during a brief
+  // reconnect, leaving this device stuck showing a stale status (e.g. still
+  // "ringing"/OutgoingCallOverlay after the other side already answered).
+  // Cheap direct re-fetch, reconciled the same way a Realtime row would be.
+  useEffect(() => {
+    if (!call) return;
+    const supabase = createClient();
+    const interval = setInterval(() => {
+      getCallById(supabase, call.id).then((fresh) => {
+        if (!fresh) return;
+        setCall((prev) => (prev && prev.id === fresh.id ? fresh : prev));
+      });
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [call?.id]);
+
+  // Caller-side auto-give-up: mirrors the 60s threshold end_stale_calls()
   // uses server-side, so the UI doesn't sit waiting on a sweep it can
   // trigger itself.
   useEffect(() => {

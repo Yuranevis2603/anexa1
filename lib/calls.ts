@@ -50,6 +50,21 @@ export function toCall(row: CallRow): Call {
 const ACTIVE_CALL_SELECT =
   "id, conversation_id, caller_id, callee_id, kind, status, room_url, room_name, started_at, answered_at, ended_at";
 
+/** Direct re-fetch of one call's current row, bypassing Realtime entirely --
+ * a lightweight safety net CallProvider polls on top of the postgres_changes
+ * subscription, since a backgrounded mobile tab can miss a WebSocket event
+ * during a brief reconnect and would otherwise be stuck showing a stale
+ * status (e.g. still "ringing" after the other side already answered). */
+export async function getCallById(supabase: SupabaseClient, callId: string): Promise<Call | null> {
+  const { data, error } = await supabase.from("conversation_calls").select(ACTIVE_CALL_SELECT).eq("id", callId).maybeSingle();
+
+  if (error) {
+    console.error("getCallById failed:", error.message);
+    return null;
+  }
+  return data ? toCall(data as unknown as CallRow) : null;
+}
+
 /** Any ringing/active call where I'm a participant -- used by CallProvider
  * to recover in-flight call state after a refresh or reconnect. First runs
  * end_stale_calls() (cheap no-op most of the time, same call-site rationale
