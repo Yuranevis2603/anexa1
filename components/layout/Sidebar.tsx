@@ -69,7 +69,7 @@ function buildPrimaryNav(
   if (isPlatformAdmin) {
     sections.push({
       title: "Адміністрування",
-      items: [{ label: "Підтвердження профілів", href: "/dashboard/admin", icon: ShieldCheck }],
+      items: [{ label: "Адмін-панель", href: "/admin", icon: ShieldCheck }],
     });
   }
 
