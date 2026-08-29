@@ -351,6 +351,16 @@ export async function adminGrantAx(supabase: SupabaseClient, userId: string, amo
   }
 }
 
+/** Manually deducts AX from one member — symmetric to adminGrantAx, same
+ * ADMIN_AX_GRANT_MAX cap, floored at 0 server-side so it can never go
+ * negative. */
+export async function adminDeductAx(supabase: SupabaseClient, userId: string, amount: number, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("admin_deduct_ax", { p_user_id: userId, p_amount: amount, p_note: note || null });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 /** Uncached read of the levels table for the admin Settings page —
  * lib/gamification.ts's getLevels() caches per-process on the assumption
  * levels rarely change, which no longer holds now that admins can edit
