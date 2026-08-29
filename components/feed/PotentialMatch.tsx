@@ -9,7 +9,15 @@ import type { MatchCandidate } from "@/lib/match";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
 
-export default function PotentialMatch({ userId, match }: { userId: string; match: MatchCandidate }) {
+export default function PotentialMatch({
+  userId,
+  match,
+  onConnected,
+}: {
+  userId: string;
+  match: MatchCandidate;
+  onConnected?: () => void;
+}) {
   const { showToast } = useToast();
   const [sent, setSent] = useState(false);
   const [sending, setSending] = useState(false);
@@ -22,6 +30,10 @@ export default function PotentialMatch({ userId, match }: { userId: string; matc
       await requestConnection(supabase, userId, match.profile.id);
       setSent(true);
       showToast("success", `Запит на знайомство надіслано ${match.profile.full_name}.`);
+      // Give the "Запит надіслано" state a beat on screen before the card
+      // leaves the feed for good — it shouldn't keep suggesting someone
+      // once a request's been sent.
+      setTimeout(() => onConnected?.(), 1200);
     } catch (err) {
       showToast("error", err instanceof Error ? err.message : "Не вдалося надіслати запит.");
     } finally {

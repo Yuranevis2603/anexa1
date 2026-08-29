@@ -54,6 +54,7 @@ export default function FeedView({
   initialFilter?: FeedFilter;
 }) {
   const [filter, setFilter] = useState<FeedFilter>(initialFilter);
+  const [matchDismissed, setMatchDismissed] = useState(false);
   const [items, setItems] = useState<FeedItem[]>([]);
   const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
@@ -264,9 +265,9 @@ export default function FeedView({
         ))}
       </div>
 
-      {topMatch ? (
+      {topMatch && !matchDismissed ? (
         <div className="mt-5">
-          <PotentialMatch userId={userId} match={topMatch} />
+          <PotentialMatch userId={userId} match={topMatch} onConnected={() => setMatchDismissed(true)} />
         </div>
       ) : null}
 
