@@ -41,6 +41,7 @@ import {
   type Review,
 } from "@/lib/gamification";
 import { getUserActivity, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
+import { getAchievements, type Achievement } from "@/lib/achievements";
 import { getProjects, type Project } from "@/lib/projects";
 import { useToast } from "@/components/ui/ToastProvider";
 import EditProfileModal from "./EditProfileModal";
@@ -153,6 +154,7 @@ export default function ProfileView({
     levelTitle: "Starter",
   });
   const [levels, setLevels] = useState<Level[]>([]);
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loadingSections, setLoadingSections] = useState(true);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
@@ -171,7 +173,9 @@ export default function ProfileView({
 
   const [menuOpen, setMenuOpen] = useState(false);
   const searchParams = useSearchParams();
-  const [activeTab, setActiveTab] = useState<"activity" | "info">(searchParams.get("tab") === "info" ? "info" : "activity");
+  const [activeTab, setActiveTab] = useState<"activity" | "achievements" | "info">(
+    searchParams.get("tab") === "info" ? "info" : searchParams.get("tab") === "achievements" ? "achievements" : "activity"
+  );
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
@@ -198,6 +202,14 @@ export default function ProfileView({
       setLevels(levelsData);
       setFollowCounts(followCountsData);
       setLoadingSections(false);
+
+      // Achievement counts (posts/connections/referrals/events) are only
+      // meaningful — and only RLS-readable — for the profile's own owner.
+      if (viewerIsOwner) {
+        getAchievements(supabase, current.id, current, statsData.level).then((data) => {
+          if (!cancelled) setAchievements(data);
+        });
+      }
 
       if (viewerId && activityData.length > 0) {
         const ids = activityData.map((item) => item.id);
@@ -575,6 +587,19 @@ export default function ProfileView({
         >
           Активність
         </button>
+        {viewerIsOwner ? (
+          <button
+            type="button"
+            onClick={() => setActiveTab("achievements")}
+            className={`rounded-full border px-3.5 py-1.5 text-[12.5px] font-medium transition-colors ${
+              activeTab === "achievements"
+                ? "border-transparent bg-grad-purple-blue text-white shadow-glow-purple"
+                : "border-border-subtle text-ink-secondary hover:bg-white/[0.05]"
+            }`}
+          >
+            Досягнення
+          </button>
+        ) : null}
         <button
           type="button"
           onClick={() => setActiveTab("info")}
@@ -616,6 +641,44 @@ export default function ProfileView({
               </div>
             )}
           </SectionCard>
+        </div>
+      ) : activeTab === "achievements" ? (
+        <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {achievements.map((a) => (
+            <div
+              key={a.key}
+              className={`glass rounded-2xl border p-4 ${
+                a.earned ? "border-purple/30 bg-purple/[0.04]" : "border-border-subtle"
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <div
+                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                    a.earned ? "bg-grad-purple-blue text-white shadow-glow-purple" : "bg-white/[0.05] text-ink-tertiary"
+                  }`}
+                >
+                  {a.earned ? <Check size={17} /> : <Trophy size={16} />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className={`truncate text-[13.5px] font-medium ${a.earned ? "text-ink-primary" : "text-ink-secondary"}`}>
+                    {a.title}
+                  </p>
+                  <p className="truncate text-[11.5px] text-ink-tertiary">{a.description}</p>
+                </div>
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-white/[0.06]">
+                  <div
+                    className={`h-full rounded-full transition-all ${a.earned ? "bg-grad-purple-blue" : "bg-white/[0.18]"}`}
+                    style={{ width: `${Math.round((a.current / a.target) * 100)}%` }}
+                  />
+                </div>
+                <span className="shrink-0 text-[11px] text-ink-tertiary">
+                  {a.current}/{a.target}
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       ) : (
         <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
