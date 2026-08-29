@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { OnlinePresenceProvider, useUnreadMessagesBadge } from "@/lib/presence";
+import CallProvider from "@/components/calls/CallProvider";
 
 // Swipe gesture tuning: only arm "open" near the screen's left edge (like a
 // native app drawer) so it doesn't hijack horizontal scrollers elsewhere on
@@ -129,18 +130,20 @@ export default function DashboardShell({
 }) {
   return (
     <OnlinePresenceProvider userId={userId} hideOnlineStatus={hideOnlineStatus}>
-      <DashboardShellInner
-        userId={userId}
-        userName={userName}
-        userRole={userRole}
-        avatarUrl={avatarUrl}
-        initialUnreadMessages={initialUnreadMessages}
-        pendingConnections={pendingConnections}
-        unreadNotifications={unreadNotifications}
-        isPlatformAdmin={isPlatformAdmin}
-      >
-        {children}
-      </DashboardShellInner>
+      <CallProvider userId={userId}>
+        <DashboardShellInner
+          userId={userId}
+          userName={userName}
+          userRole={userRole}
+          avatarUrl={avatarUrl}
+          initialUnreadMessages={initialUnreadMessages}
+          pendingConnections={pendingConnections}
+          unreadNotifications={unreadNotifications}
+          isPlatformAdmin={isPlatformAdmin}
+        >
+          {children}
+        </DashboardShellInner>
+      </CallProvider>
     </OnlinePresenceProvider>
   );
 }

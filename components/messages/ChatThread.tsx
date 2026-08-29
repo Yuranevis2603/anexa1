@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
+import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Phone, Send, Video, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import {
@@ -23,6 +23,7 @@ import {
 import { useTypingPresence } from "@/lib/presence";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
+import { useCall } from "@/components/calls/CallProvider";
 
 const MAX_ATTACHMENT_MB = 15;
 
@@ -54,6 +55,7 @@ export default function ChatThread({
   onMessageSent: (conversationId: string, preview: string, at: string) => void;
 }) {
   const { showToast } = useToast();
+  const { call, startCall } = useCall();
   const other = conversation.otherParticipant;
   const name = other?.full_name ?? "Учасник ANEXA";
 
@@ -259,6 +261,28 @@ export default function ChatThread({
           )}
           <p className={`truncate text-[12px] ${statusColor}`}>{statusText}</p>
         </div>
+        {other ? (
+          <div className="ml-auto flex shrink-0 items-center gap-1">
+            <button
+              type="button"
+              onClick={() => startCall(conversation.id, "audio")}
+              disabled={Boolean(call)}
+              aria-label="Аудіодзвінок"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.05] hover:text-ink-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Phone size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={() => startCall(conversation.id, "video")}
+              disabled={Boolean(call)}
+              aria-label="Відеодзвінок"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-ink-tertiary transition-colors hover:bg-white/[0.05] hover:text-ink-primary disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Video size={18} />
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-5 sm:px-6">
