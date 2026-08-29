@@ -339,6 +339,18 @@ export async function adminUpsertLevel(supabase: SupabaseClient, level: number, 
   }
 }
 
+export const ADMIN_AX_GRANT_MAX = 1000;
+
+/** Manually credits AX to one member — platform-admin only, capped at
+ * ADMIN_AX_GRANT_MAX per call (also enforced server-side in
+ * admin_grant_ax, so this client-side cap is only a convenience). */
+export async function adminGrantAx(supabase: SupabaseClient, userId: string, amount: number, note?: string): Promise<void> {
+  const { error } = await supabase.rpc("admin_grant_ax", { p_user_id: userId, p_amount: amount, p_note: note || null });
+  if (error) {
+    throw new Error(error.message);
+  }
+}
+
 /** Uncached read of the levels table for the admin Settings page —
  * lib/gamification.ts's getLevels() caches per-process on the assumption
  * levels rarely change, which no longer holds now that admins can edit
