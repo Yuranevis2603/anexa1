@@ -24,6 +24,7 @@ import InCallView from "./InCallView";
 const RING_TIMEOUT_MS = 60_000;
 const HEARTBEAT_INTERVAL_MS = 45_000;
 const POLL_INTERVAL_MS = 3_000;
+const IDLE_POLL_INTERVAL_MS = 5_000;
 
 type Peer = { id: string; fullName: string; avatarUrl: string | null };
 type Entry = { roomUrl: string; token: string };
@@ -124,6 +125,25 @@ export default function CallProvider({ userId, children }: { userId: string | un
       supabase.removeChannel(channel);
     };
   }, [userId]);
+
+  // Safety net for the *idle* case (no call currently tracked): the
+  // subscription above only reacts to events it actually receives, and a
+  // dropped/reconnecting WebSocket (flaky mobile network -- the same
+  // "Weak network" condition Daily itself flags mid-call) can silently
+  // swallow the INSERT for a brand-new incoming call with nothing else to
+  // ever surface it, since getMyActiveCall's one-time mount fetch already
+  // ran before the call existed. Polls only while idle -- once a call is
+  // tracked, the effect above takes over.
+  useEffect(() => {
+    if (!userId || call) return;
+    const supabase = createClient();
+    const interval = setInterval(() => {
+      getMyActiveCall(supabase, userId).then((existing) => {
+        if (existing) setCall((prev) => prev ?? existing);
+      });
+    }, IDLE_POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [userId, call]);
 
   // Clear local UI state once the tracked call reaches a terminal status.
   useEffect(() => {
