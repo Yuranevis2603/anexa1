@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -39,13 +40,16 @@ import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
 import ProfilePreviewCard from "@/components/profile/ProfilePreviewCard";
 import PostCard from "@/components/feed/PostCard";
-import CreatePostModal from "@/components/feed/CreatePostModal";
 import EventsView from "@/components/events/EventsView";
 import LivestreamPanel from "./LivestreamPanel";
 import CommunitySidebar from "./CommunitySidebar";
 import DiscussionThreadCard from "./DiscussionThreadCard";
 import CreateThreadModal from "./CreateThreadModal";
 import ThreadDetailModal from "./ThreadDetailModal";
+
+// Never needed until "Створити" is clicked (it returns null until then
+// anyway) — split it out of the initial bundle.
+const CreatePostModal = dynamic(() => import("@/components/feed/CreatePostModal"));
 
 type Tab = "feed" | "discussions" | "live" | "events" | "members" | "about";
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { ImagePlus, Loader2, Plus } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import type { Profile } from "@/lib/profile";
@@ -21,7 +22,11 @@ import {
 } from "@/lib/feed";
 import PostCard from "./PostCard";
 import PotentialMatch from "./PotentialMatch";
-import CreatePostModal from "./CreatePostModal";
+
+// Never needed until "Створити" is clicked (it returns null until then
+// anyway) — split it out of the Feed's initial bundle instead of loading
+// its image-upload/poll-builder code on every dashboard visit.
+const CreatePostModal = dynamic(() => import("./CreatePostModal"));
 
 function PostCardSkeleton() {
   return (
