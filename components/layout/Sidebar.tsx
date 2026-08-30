@@ -3,6 +3,7 @@
 import type { LucideIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { Home, Users, UserCheck, MessageCircle, User, Settings, Bookmark, Bell, Gift, ShieldCheck, X } from "lucide-react";
 
 type NavItem = {
@@ -89,7 +90,7 @@ function NavLink({
   const activeClasses = "bg-white/[0.06] text-ink-primary";
   const inactiveClasses = "text-ink-secondary hover:bg-white/[0.05] hover:text-ink-primary";
   return (
-    <a
+    <Link
       href={item.href}
       onClick={onNavigate}
       className={
@@ -104,7 +105,7 @@ function NavLink({
           {item.badge}
         </span>
       ) : null}
-    </a>
+    </Link>
   );
 }
 

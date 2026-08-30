@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   LayoutGrid,
   Users,
@@ -160,7 +161,7 @@ export default function AdminShell({
                   const Icon = item.icon;
                   const active = item.href === pathname;
                   return (
-                    <a
+                    <Link
                       key={item.href}
                       href={item.href}
                       onClick={() => setNavOpen(false)}
@@ -178,7 +179,7 @@ export default function AdminShell({
                           {item.badge}
                         </span>
                       ) : null}
-                    </a>
+                    </Link>
                   );
                 })}
               </div>
@@ -229,12 +230,12 @@ export default function AdminShell({
             <Search size={14} />
             <span>Пошук користувачів, спільнот, постів...</span>
           </div>
-          <a
+          <Link
             href="/dashboard"
             className="ml-auto shrink-0 rounded-lg border border-border-subtle px-2.5 py-1.5 text-[12px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary sm:px-3"
           >
             До платформи
-          </a>
+          </Link>
         </header>
 
         <main className="flex-1 overflow-y-auto p-4 sm:p-6">{children}</main>

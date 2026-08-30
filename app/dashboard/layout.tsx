@@ -16,10 +16,17 @@ export default async function DashboardLayout({
     data: { user },
   } = await supabase.auth.getUser();
 
-  const profile = user ? await getProfile(supabase, user.id) : null;
-  const unreadMessages = user ? await getTotalUnreadCount(supabase, user.id) : 0;
-  const pendingConnections = user ? await getIncomingConnectionCount(supabase, user.id) : 0;
-  const unreadNotifications = user ? await getUnreadNotificationCount(supabase, user.id) : 0;
+  // Four independent reads for the same user — run in parallel instead of
+  // one round trip after another, since this layout re-runs on every
+  // dashboard navigation.
+  const [profile, unreadMessages, pendingConnections, unreadNotifications] = user
+    ? await Promise.all([
+        getProfile(supabase, user.id),
+        getTotalUnreadCount(supabase, user.id),
+        getIncomingConnectionCount(supabase, user.id),
+        getUnreadNotificationCount(supabase, user.id),
+      ])
+    : [null, 0, 0, 0];
 
   return (
     <ToastProvider>
