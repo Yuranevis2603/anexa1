@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
-import { ArrowLeft, Check, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
+import { ArrowLeft, Check, ChevronUp, Download, File as FileIcon, Loader2, Paperclip, Send, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import {
@@ -59,6 +59,8 @@ export default function ChatThread({
 
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const [otherLastReadAt, setOtherLastReadAt] = useState<string | null>(null);
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
@@ -70,6 +72,10 @@ export default function ChatThread({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  // Set right before prepending older messages so the scroll-position effect
+  // restores where the reader was instead of jumping to the bottom like a
+  // fresh/new-message load does.
+  const restoreScrollRef = useRef<number | null>(null);
 
   async function signAttachments(supabase: ReturnType<typeof createClient>, msgs: ChatMessage[]) {
     const paths = msgs.map((m) => m.attachment_path).filter((p): p is string => Boolean(p));
@@ -85,12 +91,13 @@ export default function ChatThread({
     const supabase = createClient();
 
     async function load() {
-      const [history, lastRead] = await Promise.all([
+      const [{ messages: history, hasMore }, lastRead] = await Promise.all([
         getMessages(supabase, conversation.id),
         other ? getParticipantLastRead(supabase, conversation.id, other.id) : Promise.resolve(null),
       ]);
       if (cancelled) return;
       setMessages(history);
+      setHasMoreOlder(hasMore);
       setOtherLastReadAt(lastRead);
       setLoading(false);
       signAttachments(supabase, history);
@@ -138,8 +145,34 @@ export default function ChatThread({
   }, [conversation.id]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const el = scrollRef.current;
+    if (!el) return;
+    if (restoreScrollRef.current !== null) {
+      // Older messages were prepended above the fold — keep the reader's
+      // current message in view instead of snapping to the bottom.
+      el.scrollTop = el.scrollHeight - restoreScrollRef.current;
+      restoreScrollRef.current = null;
+      return;
+    }
+    el.scrollTo({ top: el.scrollHeight });
   }, [messages.length]);
+
+  async function handleLoadOlder() {
+    if (loadingOlder || !hasMoreOlder || messages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const supabase = createClient();
+      const { messages: older, hasMore } = await getMessages(supabase, conversation.id, {
+        before: messages[0].created_at,
+      });
+      if (scrollRef.current) restoreScrollRef.current = scrollRef.current.scrollHeight;
+      setMessages((prev) => [...older, ...prev]);
+      setHasMoreOlder(hasMore);
+      signAttachments(supabase, older);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   function handleBodyChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setBody(e.target.value);
@@ -271,7 +304,19 @@ export default function ChatThread({
             Напишіть перше повідомлення, щоб почати розмову.
           </div>
         ) : (
-          groups.map((group) => (
+          <>
+            {hasMoreOlder ? (
+              <button
+                type="button"
+                onClick={handleLoadOlder}
+                disabled={loadingOlder}
+                className="mx-auto flex items-center gap-1.5 rounded-full border border-border-subtle px-3.5 py-1.5 text-[12px] font-medium text-ink-secondary transition-colors hover:bg-white/[0.05] disabled:opacity-60"
+              >
+                {loadingOlder ? <Loader2 size={13} className="animate-spin" /> : <ChevronUp size={13} />}
+                Завантажити старіші
+              </button>
+            ) : null}
+            {groups.map((group) => (
             <div key={group.day} className="flex flex-col gap-3.5">
               <div className="flex items-center gap-3 px-2">
                 <div className="h-px flex-1 bg-border-subtle" />
@@ -350,7 +395,8 @@ export default function ChatThread({
                 );
               })}
             </div>
-          ))
+            ))}
+          </>
         )}
       </div>
 

@@ -44,12 +44,12 @@ import EventsView from "@/components/events/EventsView";
 import LivestreamPanel from "./LivestreamPanel";
 import CommunitySidebar from "./CommunitySidebar";
 import DiscussionThreadCard from "./DiscussionThreadCard";
-import CreateThreadModal from "./CreateThreadModal";
-import ThreadDetailModal from "./ThreadDetailModal";
 
 // Never needed until "Створити" is clicked (it returns null until then
 // anyway) — split it out of the initial bundle.
 const CreatePostModal = dynamic(() => import("@/components/feed/CreatePostModal"));
+const CreateThreadModal = dynamic(() => import("./CreateThreadModal"));
+const ThreadDetailModal = dynamic(() => import("./ThreadDetailModal"));
 
 type Tab = "feed" | "discussions" | "live" | "events" | "members" | "about";
 

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Plus } from "lucide-react";
 import type { EventItem } from "@/lib/events";
 import EventCard from "./EventCard";
-import CreateEventModal from "./CreateEventModal";
+
+const CreateEventModal = dynamic(() => import("./CreateEventModal"));
 
 export default function EventsView({
   userId,

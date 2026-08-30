@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Filter, Search, UserPlus } from "lucide-react";
 import type { FriendListItem, IncomingConnectionRequest } from "@/lib/connections";
 import type { MatchCandidate } from "@/lib/match";
@@ -9,7 +10,8 @@ import { useOnlineUsers } from "@/lib/presence";
 import ConnectionRequestsView from "@/components/connections/ConnectionRequestsView";
 import FriendCard from "./FriendCard";
 import RecommendationCard from "./RecommendationCard";
-import InviteFriendModal from "./InviteFriendModal";
+
+const InviteFriendModal = dynamic(() => import("./InviteFriendModal"));
 
 type Tab = "friends" | "requests" | "recommendations";
 

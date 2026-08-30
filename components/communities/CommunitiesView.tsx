@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import { Plus, Search } from "lucide-react";
 import type { Community } from "@/lib/communities";
 import CommunityCard from "./CommunityCard";
-import CreateCommunityModal from "./CreateCommunityModal";
+
+const CreateCommunityModal = dynamic(() => import("./CreateCommunityModal"));
 
 export default function CommunitiesView({
   userId,
