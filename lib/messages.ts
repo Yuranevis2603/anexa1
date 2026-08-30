@@ -177,22 +177,41 @@ export async function getTotalUnreadCount(supabase: SupabaseClient, userId: stri
 const MESSAGE_SELECT =
   "id, conversation_id, sender_id, content, created_at, attachment_path, attachment_name, attachment_type, attachment_size";
 
+export const MESSAGES_PAGE_SIZE = 50;
+
+/** Most recent page of a conversation's messages (oldest→newest, ready to
+ * render), plus whether older ones exist. Previously fetched the entire
+ * conversation with no limit at all — fine for a short chat, but an
+ * unbounded multi-year thread would ship its whole history on every open.
+ * Pass `before` (the oldest currently-loaded message's created_at) to page
+ * further back. */
 export async function getMessages(
   supabase: SupabaseClient,
-  conversationId: string
-): Promise<ChatMessage[]> {
-  const { data, error } = await supabase
+  conversationId: string,
+  options?: { before?: string }
+): Promise<{ messages: ChatMessage[]; hasMore: boolean }> {
+  let query = supabase
     .from("messages")
     .select(MESSAGE_SELECT)
     .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
+    .order("created_at", { ascending: false })
+    .limit(MESSAGES_PAGE_SIZE + 1);
+
+  if (options?.before) {
+    query = query.lt("created_at", options.before);
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     console.error("getMessages failed:", error.message);
-    return [];
+    return { messages: [], hasMore: false };
   }
 
-  return (data ?? []) as ChatMessage[];
+  const rows = (data ?? []) as ChatMessage[];
+  const hasMore = rows.length > MESSAGES_PAGE_SIZE;
+  const page = rows.slice(0, MESSAGES_PAGE_SIZE).reverse();
+  return { messages: page, hasMore };
 }
 
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;

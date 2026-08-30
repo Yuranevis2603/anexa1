@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
@@ -29,7 +30,6 @@ import { profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
 import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
 import { follow, unfollow, getFollowCounts } from "@/lib/follows";
-import FollowListModal from "./FollowListModal";
 import { blockUser, unblockUser } from "@/lib/moderation";
 import {
   computeLevelProgress,
@@ -45,16 +45,22 @@ import { getUserActivity, getUserLikes, getUserSaves, type FeedItem } from "@/li
 import { getAchievements, type Achievement } from "@/lib/achievements";
 import { getProjects, type Project } from "@/lib/projects";
 import { useToast } from "@/components/ui/ToastProvider";
-import EditProfileModal from "./EditProfileModal";
-import CreateProjectModal from "./CreateProjectModal";
-import ReviewModal from "./ReviewModal";
-import ReportModal from "./ReportModal";
-import GamificationInfoModal from "./GamificationInfoModal";
-import MyQRModal from "./MyQRModal";
 import PostCard from "@/components/feed/PostCard";
 import ProfilePreviewCard from "./ProfilePreviewCard";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
+
+// All of these only ever mount once their matching *Open state flips true —
+// splitting them out of the profile page's initial bundle instead of
+// shipping every modal's code (edit form, review form, QR generator, ...)
+// to everyone who just opens a profile.
+const FollowListModal = dynamic(() => import("./FollowListModal"));
+const EditProfileModal = dynamic(() => import("./EditProfileModal"));
+const CreateProjectModal = dynamic(() => import("./CreateProjectModal"));
+const ReviewModal = dynamic(() => import("./ReviewModal"));
+const ReportModal = dynamic(() => import("./ReportModal"));
+const GamificationInfoModal = dynamic(() => import("./GamificationInfoModal"));
+const MyQRModal = dynamic(() => import("./MyQRModal"));
 
 function Ring({
   size = 76,
