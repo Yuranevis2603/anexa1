@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { Maximize2, Minimize2, PhoneOff } from "lucide-react";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
 import { useCall } from "./CallProvider";
+
+// @daily-co/daily-js is a sizable dependency, only ever needed once a call
+// is actually active — lazy-load it instead of shipping it in every
+// dashboard page's initial bundle (CallProvider, which renders this
+// component, is mounted app-wide).
+const CallStage = dynamic(() => import("./CallStage"), { ssr: false });
 
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -12,12 +19,13 @@ function formatElapsed(seconds: number): string {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-/** Daily's hosted prebuilt UI in a plain iframe — same embed technique as
- * LivestreamPanel.tsx, so no @daily-co/daily-js dependency. Defaults to a
- * large centered overlay (a 1:1 call is the primary activity while it's
- * happening); "minimize" collapses it to a small bottom-right pill so the
- * call survives navigating to other dashboard pages, since CallProvider is
- * mounted at the DashboardShell level, not inside ChatThread. */
+/** Custom call surface (CallStage, built on @daily-co/daily-js) inside this
+ * component's own chrome — needed because Daily's hosted prebuilt UI has no
+ * Ukrainian locale. Defaults to a large centered overlay (a 1:1 call is the
+ * primary activity while it's happening); "minimize" collapses it to a
+ * small bottom-right pill so the call survives navigating to other
+ * dashboard pages, since CallProvider is mounted at the DashboardShell
+ * level, not inside ChatThread. */
 export default function InCallView() {
   const { call, peer, entry, minimized, setMinimized, hangUp } = useCall();
   const [elapsed, setElapsed] = useState(0);
@@ -100,11 +108,7 @@ export default function InCallView() {
               </button>
             </div>
           </div>
-          <iframe
-            src={`${entry.roomUrl}?t=${entry.token}`}
-            allow="camera; microphone; fullscreen; display-capture; autoplay"
-            className="flex-1 border-0"
-          />
+          <CallStage kind={call.kind} roomUrl={entry.roomUrl} token={entry.token} peer={peer} />
         </div>
       </div>
     </ModalPortal>
