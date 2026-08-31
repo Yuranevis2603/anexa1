@@ -153,7 +153,22 @@ export default function CallStage({
     <div className="relative flex flex-1 flex-col bg-base">
       <div className="relative flex-1 overflow-hidden bg-[#0c0d14]">
         {remoteVideo.on ? (
-          <TrackVideo video={remoteVideo.track} audio={remoteAudio.track} className="h-full w-full object-cover" />
+          <>
+            {/* Blurred cover layer fills the box regardless of aspect ratio;
+                the sharp layer on top uses object-contain so the full frame
+                is always visible — a portrait phone camera inside this wide
+                container would otherwise get cropped top/bottom by cover
+                alone, cutting off most of the person's face. */}
+            <TrackVideo
+              video={remoteVideo.track}
+              className="absolute inset-0 h-full w-full scale-110 object-cover opacity-50 blur-2xl"
+            />
+            <TrackVideo
+              video={remoteVideo.track}
+              audio={remoteAudio.track}
+              className="relative h-full w-full object-contain"
+            />
+          </>
         ) : (
           <>
             {/* Keep audio flowing even with no video frame to show (audio-only
