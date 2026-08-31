@@ -204,16 +204,20 @@ export default function FeedView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hasMore, loadingMore, page, filter]);
 
-  function handlePostDeleted(id: string) {
+  // useCallback so these keep a stable identity across re-renders — they're
+  // passed to every PostCard in the list, which is memoized specifically so
+  // an unrelated FeedView re-render doesn't re-render the whole feed; a
+  // freshly-created function prop on every render would defeat that.
+  const handlePostDeleted = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
     forYouPoolRef.current = forYouPoolRef.current.filter((i) => i.id !== id);
-  }
+  }, []);
 
   // Un-saving only needs to drop the card when we're looking at the
   // "saved" tab itself — everywhere else the post should stay put.
-  function handlePostUnsaved(id: string) {
+  const handlePostUnsaved = useCallback((id: string) => {
     setItems((prev) => prev.filter((i) => i.id !== id));
-  }
+  }, []);
 
   function handlePostCreated() {
     loadFirstPage(filter);

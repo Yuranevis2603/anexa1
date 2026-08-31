@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { memo, useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -44,7 +44,7 @@ function timeAgo(iso: string): string {
   return `${days} дн тому`;
 }
 
-export default function PostCard({
+function PostCard({
   item,
   userId,
   initiallyLiked,
@@ -598,3 +598,10 @@ export default function PostCard({
     </article>
   );
 }
+
+// Feed lists render many of these at once; memoized so an unrelated
+// FeedView re-render (e.g. loadingMore flipping during infinite scroll)
+// doesn't re-render every card — each already owns its own like/save/
+// comments state, so its props are stable unless the underlying post
+// data or callbacks actually change.
+export default memo(PostCard);
