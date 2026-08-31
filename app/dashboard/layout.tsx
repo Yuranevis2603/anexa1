@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import DashboardShell from "@/components/layout/DashboardShell";
 import ToastProvider from "@/components/ui/ToastProvider";
 import { createClient } from "@/lib/supabase/server";
@@ -27,6 +28,12 @@ export default async function DashboardLayout({
         getUnreadNotificationCount(supabase, user.id),
       ])
     : [null, 0, 0, 0];
+
+  // New members are guided through /onboarding before they see any
+  // dashboard route — keeps them out of an empty feed right after signup.
+  if (user && profile && !profile.onboarding_completed) {
+    redirect("/onboarding");
+  }
 
   return (
     <ToastProvider>
