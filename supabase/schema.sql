@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-27 (latest: notification_preferences + profile privacy/deletion columns).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-31 (latest: profiles.onboarding_completed/onboarding_step).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -39,7 +39,14 @@ create table if not exists public.profiles (
   -- Settings → danger zone: soft-delete flag set by requestAccountDeletion();
   -- an admin processes the actual removal (see profile.ts for why this
   -- isn't an instant hard delete).
-  deletion_requested_at timestamptz
+  deletion_requested_at timestamptz,
+  -- First-run guided setup after signup (see app/onboarding). Gates the
+  -- /dashboard redirect in app/dashboard/layout.tsx; onboarding_step
+  -- remembers which screen to resume on if a member closes the tab
+  -- mid-flow. Pre-existing profiles were backfilled to completed/8 so
+  -- already-active members never see it.
+  onboarding_completed boolean not null default false,
+  onboarding_step smallint not null default 1
 );
 
 alter table public.profiles enable row level security;

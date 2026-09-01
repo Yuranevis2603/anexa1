@@ -24,6 +24,8 @@ export type Profile = {
   referral_code: string | null;
   hide_online_status: boolean;
   deletion_requested_at: string | null;
+  onboarding_completed: boolean;
+  onboarding_step: number;
 };
 
 export async function getProfile(
