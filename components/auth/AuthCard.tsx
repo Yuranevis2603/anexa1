@@ -120,6 +120,36 @@ export default function AuthCard({
     router.refresh();
   }
 
+  // ---------------- LOGIN WITH GOOGLE ----------------
+  // No invite code here — this is for members who already have an account
+  // (their own or one created earlier via the register view's Google
+  // button). No signInWithOAuth call actually creates a *new* account for
+  // an email Supabase already knows, it just signs that member back in.
+  async function handleGoogleLogin() {
+    setLoginAlert(null);
+    setLoginErrors({});
+
+    if (loginHoneypot.current?.value) return; // bot
+
+    setGoogleLoading(true);
+    const supabase = createClient();
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback?next=/dashboard` },
+      });
+
+      if (error) {
+        setLoginAlert({ text: error.message, type: "danger" });
+        setGoogleLoading(false);
+      }
+    } catch (err) {
+      setLoginAlert({ text: "Сталася помилка. Спробуйте ще раз.", type: "danger" });
+      setGoogleLoading(false);
+    }
+  }
+
   // ---------------- REGISTER ----------------
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault();
@@ -426,6 +456,18 @@ export default function AuthCard({
                     <span className="label">Увійти</span>
                   </button>
                 </form>
+
+                <div className="divider"><span>або</span></div>
+
+                <button
+                  type="button"
+                  className={`btn-google ${googleLoading ? "loading" : ""}`}
+                  disabled={googleLoading || loginLoading}
+                  onClick={handleGoogleLogin}
+                >
+                  {googleLoading ? <span className="google-spinner" /> : <GoogleIcon />}
+                  <span className="label">Увійти через Google</span>
+                </button>
 
                 <p className="switch-line">
                   Немає акаунту?
