@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-08-31 (latest: profiles.onboarding_completed/onboarding_step).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-02 (latest: Google OAuth signup — consume_invite_code(), handle_new_user() avatar_url/name fallback).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -1365,8 +1365,17 @@ begin
     exit when not exists (select 1 from public.profiles where referral_code = v_new_referral_code);
   end loop;
 
-  insert into public.profiles (id, full_name, referral_code)
-  values (new.id, coalesce(new.raw_user_meta_data->>'full_name', 'Новий учасник'), v_new_referral_code);
+  -- full_name/avatar_url check both the email-signup metadata keys and the
+  -- ones Supabase's Google OAuth provider populates ('name'/'avatar_url',
+  -- sometimes 'picture') — absent for the other flow, so coalesce is a
+  -- harmless no-op there.
+  insert into public.profiles (id, full_name, avatar_url, referral_code)
+  values (
+    new.id,
+    coalesce(new.raw_user_meta_data->>'full_name', new.raw_user_meta_data->>'name', 'Новий учасник'),
+    coalesce(new.raw_user_meta_data->>'avatar_url', new.raw_user_meta_data->>'picture'),
+    v_new_referral_code
+  );
 
   if new.raw_user_meta_data ? 'invite_code' then
     v_code := new.raw_user_meta_data->>'invite_code';
@@ -1412,6 +1421,62 @@ as $$
   select exists (select 1 from public.invite_codes where code = p_code and used_by is null)
     or exists (select 1 from public.profiles where referral_code = p_code);
 $$;
+
+-- signInWithOAuth (Google "Продовжити з Google") can't carry arbitrary
+-- signup metadata the way signUp's options.data does, so an OAuth signup
+-- can't hand handle_new_user() an invite code at insert time. The client
+-- validates the code up front via validate_invite_code (same as the email
+-- form), then app/auth/callback calls this once the OAuth session exists,
+-- to do the same used_by/referral_joins/AX crediting handle_new_user()
+-- does for the email path. Idempotent — a repeat call for a user who
+-- already has a referral_joins row is a no-op (unique on referred_id).
+create or replace function public.consume_invite_code(p_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_user_id uuid := (select auth.uid());
+  v_referrer_id uuid;
+  v_joined_id uuid;
+begin
+  if v_user_id is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  if p_code is null or trim(p_code) = '' then
+    return false;
+  end if;
+
+  update public.invite_codes
+  set used_by = v_user_id, used_at = now()
+  where code = p_code and used_by is null
+  returning created_by into v_referrer_id;
+
+  if v_referrer_id is null then
+    select id into v_referrer_id from public.profiles where referral_code = p_code and id <> v_user_id;
+  end if;
+
+  if v_referrer_id is null then
+    return false;
+  end if;
+
+  insert into public.referral_joins (referrer_id, referred_id)
+  values (v_referrer_id, v_user_id)
+  on conflict (referred_id) do nothing
+  returning id into v_joined_id;
+
+  if v_joined_id is not null then
+    perform public.award_ax(v_referrer_id, 'referral', 100, 10);
+    perform public.create_notification(v_referrer_id, v_user_id, 'referral_joined', 'profile', v_user_id);
+  end if;
+
+  return true;
+end;
+$$;
+
+grant execute on function public.consume_invite_code(text) to authenticated;
 
 grant execute on function public.validate_invite_code(text) to anon, authenticated;
 

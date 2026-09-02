@@ -26,10 +26,13 @@ const strengthText = ["Занадто слабкий", "Слабкий", "Доб
 export default function AuthCard({
   initialView = "login",
   initialInvite,
+  oauthError = false,
 }: {
   initialView?: View;
   /** Prefills the invite field from a referral link's ?invite= param. */
   initialInvite?: string;
+  /** Set when /auth/callback bounced back here after a failed Google exchange. */
+  oauthError?: boolean;
 }) {
   const router = useRouter();
   const [view, setView] = useState<View>(initialView);
@@ -39,9 +42,12 @@ export default function AuthCard({
   const [loginPassword, setLoginPassword] = useState("");
   const [loginShowPw, setLoginShowPw] = useState(false);
   const [loginErrors, setLoginErrors] = useState<FieldErrors>({});
-  const [loginAlert, setLoginAlert] = useState<{ text: string; type: "danger" | "success" } | null>(null);
+  const [loginAlert, setLoginAlert] = useState<{ text: string; type: "danger" | "success" } | null>(
+    oauthError ? { text: "Не вдалося увійти через Google. Спробуйте ще раз.", type: "danger" } : null
+  );
   const [loginLoading, setLoginLoading] = useState(false);
   const loginHoneypot = useRef<HTMLInputElement>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
   // ---- register state ----
   const [regFirst, setRegFirst] = useState("");
@@ -191,6 +197,62 @@ export default function AuthCard({
     } catch (err) {
       setRegAlert({ text: "Сталася помилка. Спробуйте ще раз.", type: "danger" });
       setRegLoading(false);
+    }
+  }
+
+  // ---------------- REGISTER WITH GOOGLE ----------------
+  // signInWithOAuth can't carry an invite_code the way signUp's options.data
+  // does (no session exists yet for the DB trigger to read it from), so the
+  // code is validated here first — same RPC and same UX as the email form —
+  // then carried through the redirect as a query param for /auth/callback
+  // to hand to consume_invite_code() once the OAuth session exists.
+  async function handleGoogleRegister() {
+    setRegAlert(null);
+    setRegErrors({});
+    setTermsError(false);
+
+    if (regHoneypot.current?.value) return; // bot
+
+    const errors: FieldErrors = {};
+    if (!regInvite.trim()) errors.invite = "Введіть код запрошення";
+    if (Object.keys(errors).length) {
+      setRegErrors(errors);
+      return;
+    }
+    if (!agreeTerms) {
+      setTermsError(true);
+      return;
+    }
+
+    setGoogleLoading(true);
+    const supabase = createClient();
+
+    try {
+      const { data: isValid, error: inviteError } = await supabase.rpc("validate_invite_code", {
+        p_code: regInvite.trim(),
+      });
+
+      if (inviteError || !isValid) {
+        setRegErrors({ invite: "Невірний або вже використаний код запрошення" });
+        setGoogleLoading(false);
+        return;
+      }
+
+      const params = new URLSearchParams({ invite: regInvite.trim(), next: "/dashboard" });
+      const { error: googleError } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: `${window.location.origin}/auth/callback?${params.toString()}` },
+      });
+
+      if (googleError) {
+        setRegAlert({ text: googleError.message, type: "danger" });
+        setGoogleLoading(false);
+      }
+      // On success the browser navigates away to Google — no further state
+      // update needed (and none would run before the redirect anyway).
+    } catch (err) {
+      setRegAlert({ text: "Сталася помилка. Спробуйте ще раз.", type: "danger" });
+      setGoogleLoading(false);
     }
   }
 
@@ -504,6 +566,18 @@ export default function AuthCard({
                   </button>
                 </form>
 
+                <div className="divider"><span>або</span></div>
+
+                <button
+                  type="button"
+                  className={`btn-google ${googleLoading ? "loading" : ""}`}
+                  disabled={googleLoading || regLoading}
+                  onClick={handleGoogleRegister}
+                >
+                  {googleLoading ? <span className="google-spinner" /> : <GoogleIcon />}
+                  <span className="label">Зареєструватися через Google</span>
+                </button>
+
                 <p className="switch-line">
                   Вже маєте акаунт?
                   <button type="button" onClick={() => switchView("login")}>
@@ -584,6 +658,17 @@ function EyeIcon({ open }: { open: boolean }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z" />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg viewBox="0 0 48 48" width="18" height="18">
+      <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.6 4.7-6.1 8-11.3 8-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.1 8 3l6-6C34.4 5.1 29.5 3 24 3 12.4 3 3 12.4 3 24s9.4 21 21 21 21-9.4 21-21c0-1.4-.1-2.7-.4-3.5z" />
+      <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.6 15.9 18.9 13 24 13c3.1 0 5.8 1.1 8 3l6-6C34.4 5.1 29.5 3 24 3 15.9 3 8.9 7.6 6.3 14.7z" />
+      <path fill="#4CAF50" d="M24 45c5.4 0 10.3-2.1 14-5.5l-6.5-5.5c-2 1.5-4.6 2.5-7.5 2.5-5.2 0-9.6-3.3-11.3-8l-6.5 5C9 39.5 15.9 45 24 45z" />
+      <path fill="#1976D2" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.2 4.2-4 5.5l6.5 5.5C41.8 35.9 45 30.4 45 24c0-1.4-.1-2.7-.4-3.5z" />
     </svg>
   );
 }
@@ -773,6 +858,24 @@ const styles = `
   }
   .btn-primary.loading .spinner{ display:block; }
   @keyframes spin{ to{ transform: rotate(360deg); } }
+
+  .divider{ display:flex; align-items:center; gap:12px; margin:18px 0; }
+  .divider::before, .divider::after{ content:""; flex:1; height:1px; background: var(--card-border); }
+  .divider span{ font-size:12.5px; color: var(--text-muted); }
+
+  .btn-google{
+    width:100%; height:52px; border-radius: var(--radius-input);
+    border:1px solid var(--input-border); background: rgba(255,255,255,0.03);
+    color: var(--text-primary); font-family:inherit; font-size:14px; font-weight:600;
+    cursor:pointer; display:flex; align-items:center; justify-content:center; gap:10px;
+    transition: background .15s var(--ease), border-color .15s var(--ease);
+  }
+  .btn-google:hover{ background: rgba(255,255,255,0.06); border-color: var(--card-border-strong); }
+  .btn-google:disabled{ opacity:0.55; cursor:not-allowed; }
+  .google-spinner{
+    width:16px; height:16px; border:2px solid rgba(255,255,255,0.25);
+    border-top-color: var(--text-primary); border-radius:50%; animation: spin .7s linear infinite;
+  }
 
   .switch-line{ text-align:center; margin-top:26px; font-size:13.5px; color: var(--text-secondary); }
   .switch-line button{
