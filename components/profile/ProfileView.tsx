@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -28,21 +28,19 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { profileCompleteness, type Profile } from "@/lib/profile";
 import { getOrCreateConversation } from "@/lib/messages";
-import { acceptConnection, getViewerRelation, requestConnection, type ConnectionState } from "@/lib/connections";
-import { follow, unfollow, getFollowCounts } from "@/lib/follows";
+import { acceptConnection, requestConnection, type ConnectionState, type ViewerRelation } from "@/lib/connections";
+import { follow, unfollow } from "@/lib/follows";
 import { blockUser, unblockUser } from "@/lib/moderation";
 import {
   computeLevelProgress,
-  getLevels,
   getProfileStats,
-  getReviews,
   type Level,
   type LevelProgress,
   type ProfileStats,
   type Review,
 } from "@/lib/gamification";
-import { getUserActivity, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
-import { getAchievements, type Achievement } from "@/lib/achievements";
+import type { FeedItem } from "@/lib/feed";
+import type { Achievement } from "@/lib/achievements";
 import { getProjects, type Project } from "@/lib/projects";
 import { useToast } from "@/components/ui/ToastProvider";
 import PostCard from "@/components/feed/PostCard";
@@ -137,10 +135,33 @@ export default function ProfileView({
   profile,
   viewerIsOwner = true,
   viewerId,
+  initialProjects = [],
+  initialReviews = [],
+  initialActivity = [],
+  initialStats,
+  initialLevels = [],
+  initialFollowCounts = { followers: 0, following: 0 },
+  initialLikedIds = [],
+  initialSavedIds = [],
+  initialAchievements = [],
+  initialRelation,
 }: {
   profile: Profile;
   viewerIsOwner?: boolean;
   viewerId?: string;
+  /** All of these are fetched server-side by the page (app/dashboard/profile
+   * or app/dashboard/people/[id]) instead of this component fetching them
+   * itself after mount — same initial-props pattern as CommunityDetailView. */
+  initialProjects?: Project[];
+  initialReviews?: Review[];
+  initialActivity?: FeedItem[];
+  initialStats?: ProfileStats;
+  initialLevels?: Level[];
+  initialFollowCounts?: { followers: number; following: number };
+  initialLikedIds?: string[];
+  initialSavedIds?: string[];
+  initialAchievements?: Achievement[];
+  initialRelation?: ViewerRelation;
 }) {
   const router = useRouter();
   const { showToast } = useToast();
@@ -148,33 +169,36 @@ export default function ProfileView({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [startingChat, setStartingChat] = useState(false);
 
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [activity, setActivity] = useState<FeedItem[]>([]);
-  const [likedIds, setLikedIds] = useState<Set<string>>(new Set());
-  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
-  const [stats, setStats] = useState<ProfileStats>({
-    ax_points: 0,
-    ax_balance: 0,
-    reputation: null,
-    review_count: 0,
-    level: 1,
-    levelTitle: "Starter",
-  });
-  const [levels, setLevels] = useState<Level[]>([]);
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [loadingSections, setLoadingSections] = useState(true);
+  const [projects, setProjects] = useState<Project[]>(initialProjects);
+  const [reviews, setReviews] = useState<Review[]>(initialReviews);
+  const [activity, setActivity] = useState<FeedItem[]>(initialActivity);
+  const [likedIds, setLikedIds] = useState<Set<string>>(new Set(initialLikedIds));
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set(initialSavedIds));
+  const [stats, setStats] = useState<ProfileStats>(
+    initialStats ?? {
+      ax_points: 0,
+      ax_balance: 0,
+      reputation: null,
+      review_count: 0,
+      level: 1,
+      levelTitle: "Starter",
+    }
+  );
+  const [levels, setLevels] = useState<Level[]>(initialLevels);
+  const [achievements, setAchievements] = useState<Achievement[]>(initialAchievements);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
-  const [connectionState, setConnectionState] = useState<ConnectionState>({ status: "none" });
+  const [connectionState, setConnectionState] = useState<ConnectionState>(
+    initialRelation?.connection ?? { status: "none" }
+  );
   const [connectionLoading, setConnectionLoading] = useState(false);
-  const [following, setFollowing] = useState(false);
+  const [following, setFollowing] = useState(initialRelation?.following ?? false);
   const [followLoading, setFollowLoading] = useState(false);
-  const [followCounts, setFollowCounts] = useState({ followers: 0, following: 0 });
+  const [followCounts, setFollowCounts] = useState(initialFollowCounts);
   const [followListOpen, setFollowListOpen] = useState<"followers" | "following" | null>(null);
-  const [blocked, setBlocked] = useState(false);
+  const [blocked, setBlocked] = useState(initialRelation?.blocked ?? false);
   const [blockLoading, setBlockLoading] = useState(false);
-  const [hasReviewed, setHasReviewed] = useState(false);
+  const [hasReviewed, setHasReviewed] = useState(initialRelation?.reviewed ?? false);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [reportModalOpen, setReportModalOpen] = useState(false);
   const [gamificationInfoOpen, setGamificationInfoOpen] = useState(false);
@@ -188,66 +212,6 @@ export default function ProfileView({
 
   const completeness = profileCompleteness(current);
   const canInteract = !viewerIsOwner && Boolean(viewerId);
-
-  useEffect(() => {
-    let cancelled = false;
-    const supabase = createClient();
-
-    async function load() {
-      setLoadingSections(true);
-      const [projectsData, reviewsData, activityData, statsData, levelsData, followCountsData] = await Promise.all([
-        getProjects(supabase, current.id),
-        getReviews(supabase, current.id),
-        getUserActivity(supabase, current.id, undefined, viewerId),
-        getProfileStats(supabase, current.id),
-        getLevels(supabase),
-        getFollowCounts(supabase, current.id),
-      ]);
-      if (cancelled) return;
-      setProjects(projectsData);
-      setReviews(reviewsData);
-      setActivity(activityData);
-      setStats(statsData);
-      setLevels(levelsData);
-      setFollowCounts(followCountsData);
-      setLoadingSections(false);
-
-      // Achievement counts (posts/connections/referrals/events) are only
-      // meaningful — and only RLS-readable — for the profile's own owner.
-      if (viewerIsOwner) {
-        getAchievements(supabase, current.id, current, statsData.level).then((data) => {
-          if (!cancelled) setAchievements(data);
-        });
-      }
-
-      if (viewerId && activityData.length > 0) {
-        const ids = activityData.map((item) => item.id);
-        const [liked, saved] = await Promise.all([
-          getUserLikes(supabase, viewerId, ids),
-          getUserSaves(supabase, viewerId, ids),
-        ]);
-        if (cancelled) return;
-        setLikedIds(liked);
-        setSavedIds(saved);
-      }
-
-      if (canInteract && viewerId) {
-        const relation = await getViewerRelation(supabase, viewerId, current.id);
-        if (cancelled) return;
-        setFollowing(relation.following);
-        setBlocked(relation.blocked);
-        setHasReviewed(relation.reviewed);
-        setConnectionState(relation.connection);
-      }
-    }
-
-    load();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current.id]);
-
 
   // Only the owner has a real ax_points value to compute progress-to-next-level
   // from (see getProfileStats) — for anyone else, show the accurate level/title
@@ -633,13 +597,7 @@ export default function ProfileView({
       {activeTab === "activity" ? (
         <div className="mt-4">
           <SectionCard title="Остання активність" icon={Sparkles}>
-            {loadingSections ? (
-              <div className="flex flex-col gap-3">
-                {[0, 1, 2].map((i) => (
-                  <div key={i} className="h-16 animate-pulse rounded-xl bg-white/[0.04]" />
-                ))}
-              </div>
-            ) : activity.length === 0 ? (
+            {activity.length === 0 ? (
               <p className="text-[13.5px] text-ink-tertiary">Активності поки немає.</p>
             ) : !viewerId ? (
               <p className="text-[13.5px] text-ink-tertiary">Увійдіть, щоб переглянути активність.</p>
@@ -729,13 +687,7 @@ export default function ProfileView({
                 ) : null
               }
             >
-              {loadingSections ? (
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  {[0, 1].map((i) => (
-                    <div key={i} className="h-20 animate-pulse rounded-xl bg-white/[0.04]" />
-                  ))}
-                </div>
-              ) : projects.length === 0 ? (
+              {projects.length === 0 ? (
                 viewerIsOwner ? (
                   <EmptyHint text="Ще немає проєктів — додайте перший." cta="Додати проєкт" onClick={() => setCreateProjectOpen(true)} />
                 ) : (

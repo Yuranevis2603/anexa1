@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type NotificationType =
@@ -98,6 +99,12 @@ export async function getUnreadNotificationCount(supabase: SupabaseClient, userI
 
   return count ?? 0;
 }
+
+/** Same as getUnreadNotificationCount, memoized per request via React
+ * cache() — for Server Components only. Client Components (e.g.
+ * NotificationBell's polling badge) must keep using the plain function —
+ * cache() isn't for Client Component use. */
+export const getCachedUnreadNotificationCount = cache(getUnreadNotificationCount);
 
 export async function markNotificationRead(supabase: SupabaseClient, id: string): Promise<void> {
   const { error } = await supabase

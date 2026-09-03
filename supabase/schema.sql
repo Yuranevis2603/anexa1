@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-02 (latest: Google OAuth signup — consume_invite_code(), handle_new_user() avatar_url/name fallback).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-03 (latest: performance pass — get_community_member_counts()/get_community_post_counts() RPCs, indexes on profiles.is_approved/created_at, community_join_requests.user_id, user_reports open-queue).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -48,6 +48,10 @@ create table if not exists public.profiles (
   onboarding_completed boolean not null default false,
   onboarding_step smallint not null default 1
 );
+
+-- Backs the admin Users table's pending-review filter and default sort.
+create index if not exists idx_profiles_is_approved on public.profiles (is_approved) where is_approved = false;
+create index if not exists idx_profiles_created_at on public.profiles (created_at desc);
 
 alter table public.profiles enable row level security;
 
@@ -274,6 +278,21 @@ create policy "community_members_delete_own"
   on public.community_members for delete
   to public
   using (user_id = (select auth.uid()));
+
+-- Server-side group-by for getCommunities()/getAdminCommunities() — avoids
+-- pulling every community_members row to the client just to count(). SECURITY
+-- INVOKER: runs with the caller's own RLS (community_members is select-all
+-- for authenticated users already), so this changes nothing about who can
+-- read what.
+create or replace function public.get_community_member_counts()
+returns table(community_id uuid, member_count bigint)
+language sql stable security invoker set search_path = public as $$
+  select community_id, count(*)::bigint
+  from public.community_members
+  group by community_id;
+$$;
+
+grant execute on function public.get_community_member_counts() to authenticated;
 
 create or replace function public.is_community_owner(p_community_id uuid, p_user_id uuid)
 returns boolean as $$
@@ -698,6 +717,19 @@ create index if not exists idx_activity_items_post_type on public.activity_items
   where post_type is not null;
 create index if not exists idx_activity_items_community_id on public.activity_items (community_id)
   where community_id is not null;
+
+-- Server-side group-by for getAdminCommunities()'s post-count column —
+-- same rationale as get_community_member_counts() above.
+create or replace function public.get_community_post_counts()
+returns table(community_id uuid, post_count bigint)
+language sql stable security invoker set search_path = public as $$
+  select community_id, count(*)::bigint
+  from public.activity_items
+  where community_id is not null
+  group by community_id;
+$$;
+
+grant execute on function public.get_community_post_counts() to authenticated;
 
 alter table public.activity_items enable row level security;
 
@@ -1317,6 +1349,9 @@ create table if not exists public.user_reports (
   reviewed_by uuid references public.profiles(id),
   constraint user_reports_no_self_report check (reporter_id <> reported_id)
 );
+
+-- Backs getOpenReports()'s "reviewed_at is null" admin queue query.
+create index if not exists idx_user_reports_open on public.user_reports (created_at) where reviewed_at is null;
 
 alter table public.user_reports enable row level security;
 
@@ -2199,6 +2234,7 @@ create table if not exists public.community_join_requests (
 );
 
 create index if not exists idx_community_join_requests_community_id on public.community_join_requests (community_id);
+create index if not exists idx_community_join_requests_user_id on public.community_join_requests (user_id);
 
 alter table public.community_join_requests enable row level security;
 

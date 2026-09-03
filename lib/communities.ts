@@ -73,17 +73,22 @@ function toCommunity(row: CommunityRow, memberCount: number, isMember: boolean, 
 }
 
 /** All communities with a member count and whether `userId` has joined.
- * Both tables are select-all for authenticated members (see schema.sql),
- * so this is two plain reads plus a client-side aggregation — no RPC
- * needed at this scale. */
+ * Member counts come from the get_community_member_counts() RPC (a
+ * SECURITY INVOKER group-by — same RLS-visible rows community_members'
+ * select-all policy already exposes, just aggregated in Postgres instead of
+ * shipping every membership row to the client). `userId`'s own memberships
+ * are a plain user-scoped read (indexed via idx_community_members_user_id),
+ * not a table scan. */
 export async function getCommunities(supabase: SupabaseClient, userId: string): Promise<Community[]> {
   const [
     { data: communities, error: communitiesError },
-    { data: members, error: membersError },
+    { data: memberCounts, error: countsError },
+    { data: myMemberships, error: myMembershipsError },
     { data: pending, error: pendingError },
   ] = await Promise.all([
     supabase.from("communities").select(COMMUNITY_COLUMNS).order("name"),
-    supabase.from("community_members").select("community_id, user_id"),
+    supabase.rpc("get_community_member_counts"),
+    supabase.from("community_members").select("community_id").eq("user_id", userId),
     supabase.from("community_join_requests").select("community_id").eq("user_id", userId),
   ]);
 
@@ -91,20 +96,21 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
     console.error("getCommunities failed:", communitiesError.message);
     return [];
   }
-  if (membersError) {
-    console.error("getCommunities (members) failed:", membersError.message);
+  if (countsError) {
+    console.error("getCommunities (member counts) failed:", countsError.message);
+  }
+  if (myMembershipsError) {
+    console.error("getCommunities (my memberships) failed:", myMembershipsError.message);
   }
   if (pendingError) {
     console.error("getCommunities (pending) failed:", pendingError.message);
   }
 
-  const rows = (members ?? []) as { community_id: string; user_id: string }[];
   const counts = new Map<string, number>();
-  const mine = new Set<string>();
-  for (const row of rows) {
-    counts.set(row.community_id, (counts.get(row.community_id) ?? 0) + 1);
-    if (row.user_id === userId) mine.add(row.community_id);
+  for (const row of (memberCounts ?? []) as { community_id: string; member_count: number }[]) {
+    counts.set(row.community_id, Number(row.member_count));
   }
+  const mine = new Set(((myMemberships ?? []) as { community_id: string }[]).map((r) => r.community_id));
   const pendingIds = new Set(((pending ?? []) as { community_id: string }[]).map((p) => p.community_id));
 
   return ((communities ?? []) as CommunityRow[]).map((c) =>
@@ -114,7 +120,9 @@ export async function getCommunities(supabase: SupabaseClient, userId: string): 
 
 /** One community by id, with the same member count/membership shape as
  * getCommunities — for the community detail page header. Null if the
- * community doesn't exist. */
+ * community doesn't exist. Count-only + single-row lookup instead of
+ * reading every member row, since only the count and one membership bit
+ * are actually needed here. */
 export async function getCommunity(
   supabase: SupabaseClient,
   communityId: string,
@@ -122,11 +130,13 @@ export async function getCommunity(
 ): Promise<Community | null> {
   const [
     { data: community, error: communityError },
-    { data: members, error: membersError },
+    { count: memberCount, error: countError },
+    { data: myMembership },
     { data: pending },
   ] = await Promise.all([
     supabase.from("communities").select(COMMUNITY_COLUMNS).eq("id", communityId).maybeSingle(),
-    supabase.from("community_members").select("user_id").eq("community_id", communityId),
+    supabase.from("community_members").select("user_id", { count: "exact", head: true }).eq("community_id", communityId),
+    supabase.from("community_members").select("user_id").eq("community_id", communityId).eq("user_id", userId).maybeSingle(),
     supabase.from("community_join_requests").select("id").eq("community_id", communityId).eq("user_id", userId).maybeSingle(),
   ]);
 
@@ -134,12 +144,11 @@ export async function getCommunity(
     if (communityError) console.error("getCommunity failed:", communityError.message);
     return null;
   }
-  if (membersError) {
-    console.error("getCommunity (members) failed:", membersError.message);
+  if (countError) {
+    console.error("getCommunity (member count) failed:", countError.message);
   }
 
-  const rows = (members ?? []) as { user_id: string }[];
-  return toCommunity(community as CommunityRow, rows.length, rows.some((r) => r.user_id === userId), Boolean(pending));
+  return toCommunity(community as CommunityRow, memberCount ?? 0, Boolean(myMembership), Boolean(pending));
 }
 
 /** Creates a community owned by `userId` (the created_by unique index caps

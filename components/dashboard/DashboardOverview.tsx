@@ -3,9 +3,9 @@ import Image from "next/image";
 import { Bell, CalendarClock } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getLevels, getProfileStats, computeLevelProgress } from "@/lib/gamification";
-import { getTotalUnreadCount } from "@/lib/messages";
-import { getUnreadNotificationCount } from "@/lib/notifications";
-import { getEvents, formatEventDate } from "@/lib/events";
+import { getCachedTotalUnreadCount } from "@/lib/messages";
+import { getCachedUnreadNotificationCount } from "@/lib/notifications";
+import { getNextRegisteredEvent, formatEventDate } from "@/lib/events";
 
 type Tile = {
   href: string;
@@ -25,19 +25,16 @@ export default async function DashboardOverview({
   supabase: SupabaseClient;
   userId: string;
 }) {
-  const [levels, stats, unreadMessages, unreadNotifications, events] = await Promise.all([
+  const [levels, stats, unreadMessages, unreadNotifications, nextEvent] = await Promise.all([
     getLevels(supabase),
     getProfileStats(supabase, userId),
-    getTotalUnreadCount(supabase, userId),
-    getUnreadNotificationCount(supabase, userId),
-    getEvents(supabase, userId),
+    getCachedTotalUnreadCount(supabase, userId),
+    getCachedUnreadNotificationCount(supabase, userId),
+    getNextRegisteredEvent(supabase, userId),
   ]);
 
   const progress = computeLevelProgress(stats.ax_points, levels);
   const totalUnread = unreadMessages + unreadNotifications;
-  const nextEvent = events
-    .filter((e) => e.isRegistered && new Date(e.eventDate).getTime() >= Date.now())
-    .sort((a, b) => new Date(a.eventDate).getTime() - new Date(b.eventDate).getTime())[0];
 
   const tiles: Tile[] = [
     {

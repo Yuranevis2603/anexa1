@@ -35,12 +35,18 @@ export async function middleware(request: NextRequest) {
   const isAuthRoute =
     request.nextUrl.pathname.startsWith("/login") ||
     request.nextUrl.pathname.startsWith("/register");
+  const isRoot = request.nextUrl.pathname === "/";
 
   if (!user && isProtectedRoute) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  if (user && isAuthRoute) {
+  // Logged-in visitors to the public landing page go straight to the
+  // dashboard. Handled here instead of in app/page.tsx so that page can stay
+  // a plain static Server Component (no cookies()/auth check of its own) —
+  // otherwise Next.js would render it dynamically on every visit, including
+  // for logged-out visitors and SEO crawlers who never needed the check.
+  if (user && (isAuthRoute || isRoot)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
@@ -48,5 +54,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/onboarding", "/login", "/register"],
+  matcher: ["/", "/dashboard/:path*", "/onboarding", "/login", "/register"],
 };

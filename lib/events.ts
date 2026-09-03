@@ -29,9 +29,9 @@ type EventRow = {
 const EVENT_COLUMNS = "id, title, description, location, event_date, created_by, community_id, status";
 
 /** All events (optionally scoped to one community) with an attendee count
- * and whether `userId` is registered. Both tables are select-all for
- * authenticated members (see schema.sql), so this is two plain reads plus
- * a client-side aggregation — same approach as getCommunities. */
+ * and whether `userId` is registered. Registrations are scoped to the
+ * fetched events via `.in()` (same pattern as getUserLikes/getUserSaves)
+ * instead of reading the entire event_registrations table. */
 export async function getEvents(
   supabase: SupabaseClient,
   userId: string,
@@ -47,15 +47,25 @@ export async function getEvents(
     query = query.eq("status", "published");
   }
 
-  const [{ data: events, error: eventsError }, { data: regs, error: regsError }] = await Promise.all([
-    query,
-    supabase.from("event_registrations").select("event_id, user_id").neq("status", "cancelled"),
-  ]);
+  const { data: events, error: eventsError } = await query;
 
   if (eventsError) {
     console.error("getEvents failed:", eventsError.message);
     return [];
   }
+
+  const eventRows = (events ?? []) as EventRow[];
+  const eventIds = eventRows.map((e) => e.id);
+
+  const { data: regs, error: regsError } =
+    eventIds.length > 0
+      ? await supabase
+          .from("event_registrations")
+          .select("event_id, user_id")
+          .in("event_id", eventIds)
+          .neq("status", "cancelled")
+      : { data: [] as { event_id: string; user_id: string }[], error: null };
+
   if (regsError) {
     console.error("getEvents (registrations) failed:", regsError.message);
   }
@@ -68,7 +78,7 @@ export async function getEvents(
     if (row.user_id === userId) mine.add(row.event_id);
   }
 
-  return ((events ?? []) as EventRow[]).map((e) => ({
+  return eventRows.map((e) => ({
     id: e.id,
     title: e.title,
     description: e.description,
@@ -80,6 +90,44 @@ export async function getEvents(
     attendeeCount: counts.get(e.id) ?? 0,
     isRegistered: mine.has(e.id),
   }));
+}
+
+/** The single soonest upcoming event `userId` is registered for — for the
+ * dashboard overview tile, which only needs one event, not the whole
+ * platform's event list. Uses the existing idx_event_registrations_user_id
+ * index and Postgrest's embedded-resource filtering to do it in one
+ * round trip. */
+export async function getNextRegisteredEvent(supabase: SupabaseClient, userId: string): Promise<EventItem | null> {
+  const { data, error } = await supabase
+    .from("event_registrations")
+    .select(`event_id, events!inner(${EVENT_COLUMNS})`)
+    .eq("user_id", userId)
+    .neq("status", "cancelled")
+    .eq("events.status", "published")
+    .gte("events.event_date", new Date().toISOString())
+    .order("event_date", { foreignTable: "events", ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) {
+    console.error("getNextRegisteredEvent failed:", error.message);
+    return null;
+  }
+  if (!data) return null;
+
+  const e = (data as unknown as { events: EventRow }).events;
+  return {
+    id: e.id,
+    title: e.title,
+    description: e.description,
+    location: e.location,
+    eventDate: e.event_date,
+    createdBy: e.created_by,
+    communityId: e.community_id,
+    status: e.status,
+    attendeeCount: 0,
+    isRegistered: true,
+  };
 }
 
 /** Creates an event owned by `userId` (optionally scoped to a community)

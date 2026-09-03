@@ -1,11 +1,11 @@
 import { redirect } from "next/navigation";
 import DashboardShell from "@/components/layout/DashboardShell";
 import ToastProvider from "@/components/ui/ToastProvider";
-import { createClient } from "@/lib/supabase/server";
-import { getProfile } from "@/lib/profile";
-import { getTotalUnreadCount } from "@/lib/messages";
+import { createClient, getCachedUser } from "@/lib/supabase/server";
+import { getCachedProfile } from "@/lib/profile";
+import { getCachedTotalUnreadCount } from "@/lib/messages";
 import { getIncomingConnectionCount } from "@/lib/connections";
-import { getUnreadNotificationCount } from "@/lib/notifications";
+import { getCachedUnreadNotificationCount } from "@/lib/notifications";
 
 export default async function DashboardLayout({
   children,
@@ -13,19 +13,19 @@ export default async function DashboardLayout({
   children: React.ReactNode;
 }) {
   const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getCachedUser(supabase);
 
   // Four independent reads for the same user — run in parallel instead of
   // one round trip after another, since this layout re-runs on every
-  // dashboard navigation.
+  // dashboard navigation. Profile/unread-message/unread-notification counts
+  // are React cache()-wrapped so DashboardPage/DashboardOverview reusing
+  // them in the same request don't refetch.
   const [profile, unreadMessages, pendingConnections, unreadNotifications] = user
     ? await Promise.all([
-        getProfile(supabase, user.id),
-        getTotalUnreadCount(supabase, user.id),
+        getCachedProfile(supabase, user.id),
+        getCachedTotalUnreadCount(supabase, user.id),
         getIncomingConnectionCount(supabase, user.id),
-        getUnreadNotificationCount(supabase, user.id),
+        getCachedUnreadNotificationCount(supabase, user.id),
       ])
     : [null, 0, 0, 0];
 

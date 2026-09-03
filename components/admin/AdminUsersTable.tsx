@@ -1,9 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Check, Coins, Loader2, Minus, Plus, Search, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
+import { Check, ChevronLeft, ChevronRight, Coins, Loader2, Minus, Plus, Search, X } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
-import { ADMIN_AX_GRANT_MAX, adminDeductAx, adminGrantAx, approveProfile, type AdminUser } from "@/lib/admin";
+import {
+  ADMIN_AX_GRANT_MAX,
+  adminDeductAx,
+  adminGrantAx,
+  approveProfile,
+  type AdminUser,
+  type AdminUsersPage,
+  type AdminUserStatusFilter,
+} from "@/lib/admin";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
 import ModalPortal from "@/components/ui/ModalPortal";
@@ -115,7 +124,7 @@ function AdjustAxModal({ user, onClose }: { user: AdminUser; onClose: () => void
   );
 }
 
-type StatusFilter = "all" | "active" | "pending";
+type StatusFilter = AdminUserStatusFilter;
 
 const FILTERS: { value: StatusFilter; label: string }[] = [
   { value: "all", label: "Усі" },
@@ -127,25 +136,60 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("uk-UA", { day: "2-digit", month: "2-digit", year: "2-digit" });
 }
 
-export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminUser[] }) {
+/** Search/status/page live in the URL (`?q=&status=&page=`) so the admin
+ * Users list is server-paginated (see getAdminUsers) instead of loading
+ * every member and filtering client-side. The search input debounces its
+ * own URL push; status and page changes navigate immediately. */
+export default function AdminUsersTable({
+  usersPage,
+  search: initialSearch,
+  status,
+}: {
+  usersPage: AdminUsersPage;
+  search: string;
+  status: StatusFilter;
+}) {
   const { showToast } = useToast();
-  const [users, setUsers] = useState(initialUsers);
-  const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<StatusFilter>("all");
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [users, setUsers] = useState(usersPage.users);
+  const [searchInput, setSearchInput] = useState(initialSearch);
   const [approvingId, setApprovingId] = useState<string | null>(null);
   const [grantTarget, setGrantTarget] = useState<AdminUser | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const filtered = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    return users.filter((u) => {
-      if (filter === "active" && !u.isApproved) return false;
-      if (filter === "pending" && u.isApproved) return false;
-      if (!term) return true;
-      return u.fullName.toLowerCase().includes(term) || (u.username ?? "").toLowerCase().includes(term);
-    });
-  }, [users, search, filter]);
+  useEffect(() => setUsers(usersPage.users), [usersPage.users]);
+  useEffect(() => setSearchInput(initialSearch), [initialSearch]);
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
-  const pendingCount = users.filter((u) => !u.isApproved).length;
+  function pushParams(next: { q?: string; status?: StatusFilter; page?: number }) {
+    const params = new URLSearchParams(searchParams.toString());
+    const q = next.q ?? initialSearch;
+    const s = next.status ?? status;
+    const p = next.page ?? 1;
+
+    if (q) params.set("q", q);
+    else params.delete("q");
+    if (s !== "all") params.set("status", s);
+    else params.delete("status");
+    if (p > 1) params.set("page", String(p));
+    else params.delete("page");
+
+    router.replace(params.size > 0 ? `${pathname}?${params.toString()}` : pathname);
+  }
+
+  function handleSearchChange(value: string) {
+    setSearchInput(value);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => pushParams({ q: value, page: 1 }), 300);
+  }
+
+  function handleFilterChange(next: StatusFilter) {
+    pushParams({ status: next, page: 1 });
+  }
+
+  const totalPages = Math.max(Math.ceil(usersPage.total / usersPage.pageSize), 1);
 
   async function handleApprove(user: AdminUser) {
     if (approvingId) return;
@@ -167,7 +211,7 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
         <div>
           <h1 className="font-display text-xl font-semibold text-ink-primary">Користувачі</h1>
           <p className="mt-1 text-[13px] text-ink-tertiary">
-            {filtered.length} із {users.length} користувачів · {pendingCount} на перевірці
+            {usersPage.total} користувачів · {usersPage.pendingTotal} на перевірці
           </p>
         </div>
       </div>
@@ -177,8 +221,8 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
           <div className="flex min-w-[220px] flex-1 items-center gap-2 rounded-lg border border-border-subtle bg-white/[0.03] px-3 py-2 text-[12.5px]">
             <Search size={14} className="shrink-0 text-ink-tertiary" />
             <input
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => handleSearchChange(e.target.value)}
               placeholder="Пошук за іменем або @username..."
               className="w-full bg-transparent text-ink-primary placeholder:text-ink-tertiary focus:outline-none"
             />
@@ -187,9 +231,9 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
             <button
               key={f.value}
               type="button"
-              onClick={() => setFilter(f.value)}
+              onClick={() => handleFilterChange(f.value)}
               className={`shrink-0 rounded-lg border px-3 py-2 text-[12.5px] font-medium transition-colors ${
-                filter === f.value
+                status === f.value
                   ? "border-transparent bg-grad-purple-blue text-white shadow-glow-purple"
                   : "border-border-subtle text-ink-secondary hover:bg-white/[0.05]"
               }`}
@@ -212,14 +256,14 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
               </tr>
             </thead>
             <tbody>
-              {filtered.length === 0 ? (
+              {users.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-3 py-10 text-center text-[13px] text-ink-tertiary">
                     Нічого не знайдено.
                   </td>
                 </tr>
               ) : (
-                filtered.map((u) => (
+                users.map((u) => (
                   <tr key={u.id} className="border-b border-border-subtle last:border-0 hover:bg-white/[0.02]">
                     <td className="px-3 py-2.5">
                       <div className="flex items-center gap-2.5">
@@ -294,6 +338,32 @@ export default function AdminUsersTable({ initialUsers }: { initialUsers: AdminU
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 ? (
+          <div className="mt-3 flex items-center justify-between border-t border-border-subtle pt-3">
+            <p className="text-[12px] text-ink-tertiary">
+              Сторінка {usersPage.page} з {totalPages}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => pushParams({ page: usersPage.page - 1 })}
+                disabled={usersPage.page <= 1}
+                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1.5 text-[12px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                <ChevronLeft size={14} /> Назад
+              </button>
+              <button
+                type="button"
+                onClick={() => pushParams({ page: usersPage.page + 1 })}
+                disabled={usersPage.page >= totalPages}
+                className="flex items-center gap-1 rounded-lg border border-border-subtle px-2.5 py-1.5 text-[12px] text-ink-secondary transition-colors hover:bg-white/[0.05] hover:text-ink-primary disabled:opacity-40 disabled:hover:bg-transparent"
+              >
+                Далі <ChevronRight size={14} />
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {grantTarget ? <AdjustAxModal user={grantTarget} onClose={() => setGrantTarget(null)} /> : null}

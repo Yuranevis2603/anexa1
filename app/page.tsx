@@ -1,16 +1,9 @@
-import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
 import LandingView from "@/components/landing/LandingView";
 
-export default async function RootPage() {
-  const supabase = createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (user) {
-    redirect("/dashboard");
-  }
-
+// Logged-in visitors are redirected to /dashboard by middleware.ts before
+// this ever renders — keeping this component free of cookies()/auth checks
+// lets Next.js render it as a static page (cached, no per-request work),
+// which matters since this is the public marketing/SEO entry point.
+export default function RootPage() {
   return <LandingView />;
 }

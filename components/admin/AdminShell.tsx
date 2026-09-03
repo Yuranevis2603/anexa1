@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
+import Image from "next/image";
 import {
   LayoutGrid,
   Users,
@@ -190,8 +191,7 @@ export default function AdminShell({
         <div className="mt-4 border-t border-border-subtle pt-3">
           <div className="flex items-center gap-2.5 px-2">
             {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={avatarUrl} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
+              <Image src={avatarUrl} alt="" width={32} height={32} className="h-8 w-8 shrink-0 rounded-full object-cover" />
             ) : (
               <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-grad-purple-blue text-[11px] font-semibold text-white">
                 {initials || "?"}

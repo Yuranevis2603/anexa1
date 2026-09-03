@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type Profile = {
@@ -45,6 +46,14 @@ export async function getProfile(
 
   return data as Profile;
 }
+
+/** Same as getProfile, memoized per request via React cache() — for Server
+ * Components only (cache() is an RSC API). Use this instead of getProfile
+ * when a route's layout and page would otherwise both fetch the same
+ * profile in the same request (e.g. app/dashboard/layout.tsx +
+ * app/dashboard/page.tsx). Client Components (e.g. ProfilePreviewCard) must
+ * keep using plain getProfile — cache() isn't for Client Component use. */
+export const getCachedProfile = cache(getProfile);
 
 /** Privacy toggle: when true, OnlinePresenceProvider stops broadcasting
  * this member's own presence key (others simply never see them online). */

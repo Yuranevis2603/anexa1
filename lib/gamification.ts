@@ -29,7 +29,10 @@ export type LevelProgress = {
 
 let cachedLevels: Level[] | null = null;
 
-/** Levels rarely change — fetch once per session instead of on every profile view. */
+/** Levels rarely change — fetch once per process instead of on every profile
+ * view. Invalidated by invalidateLevelsCache() (called from adminUpsertLevel)
+ * whenever an admin actually edits a level, instead of never (see that
+ * function's comment for why this used to be a real staleness bug). */
 export async function getLevels(supabase: SupabaseClient): Promise<Level[]> {
   if (cachedLevels) return cachedLevels;
 
@@ -42,6 +45,12 @@ export async function getLevels(supabase: SupabaseClient): Promise<Level[]> {
 
   cachedLevels = (data ?? []) as Level[];
   return cachedLevels;
+}
+
+/** Clears the in-process levels cache so the next getLevels() call re-fetches
+ * instead of serving stale data — call after any write to `levels`. */
+export function invalidateLevelsCache(): void {
+  cachedLevels = null;
 }
 
 /**

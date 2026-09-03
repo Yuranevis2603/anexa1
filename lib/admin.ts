@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { invalidateLevelsCache } from "./gamification";
 
 export type PendingProfile = {
   id: string;
@@ -57,25 +58,71 @@ export type AdminUser = {
   communityCount: number;
 };
 
-/** Every member for the admin Users table, newest signup first, with a
- * community-membership count. Two plain reads (profiles is select-all for
- * authenticated users; community_members likewise) aggregated client-side —
- * same approach as getCommunities, fine at this scale. Nothing here exposes
- * ax_points/email: those aren't readable cross-account (see
- * profile_gamification RLS) or don't exist on `profiles` at all. */
-export async function getAdminUsers(supabase: SupabaseClient): Promise<AdminUser[]> {
-  const [{ data: profiles, error: profilesError }, { data: members, error: membersError }] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id, full_name, username, avatar_url, role_title, company, is_approved, is_platform_admin, created_at")
-      .order("created_at", { ascending: false }),
-    supabase.from("community_members").select("user_id"),
-  ]);
+export type AdminUserStatusFilter = "all" | "active" | "pending";
+
+export type AdminUsersPage = {
+  users: AdminUser[];
+  /** Total matching rows across every page — for the pager and the "N із M" label. */
+  total: number;
+  /** Pending-approval count across the whole table (not just this page) —
+   * cheap now via idx_profiles_is_approved. */
+  pendingTotal: number;
+  page: number;
+  pageSize: number;
+};
+
+export const ADMIN_USERS_PAGE_SIZE = 25;
+
+/** One page of members for the admin Users table, newest signup first —
+ * search/status-filtered and paginated server-side via `.range()` +
+ * `{count:"exact"}` instead of loading the entire `profiles` table. The
+ * community-membership count is scoped to just this page's user ids via
+ * `.in()` (same pattern as getUserLikes/getUserSaves), not the whole
+ * community_members table. Nothing here exposes ax_points/email: those
+ * aren't readable cross-account (see profile_gamification RLS) or don't
+ * exist on `profiles` at all. */
+export async function getAdminUsers(
+  supabase: SupabaseClient,
+  options?: { search?: string; status?: AdminUserStatusFilter; page?: number; pageSize?: number }
+): Promise<AdminUsersPage> {
+  const page = Math.max(options?.page ?? 1, 1);
+  const pageSize = options?.pageSize ?? ADMIN_USERS_PAGE_SIZE;
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  let query = supabase
+    .from("profiles")
+    .select("id, full_name, username, avatar_url, role_title, company, is_approved, is_platform_admin, created_at", {
+      count: "exact",
+    })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  const term = options?.search?.trim();
+  if (term) {
+    const like = `%${term}%`;
+    query = query.or(`full_name.ilike.${like},username.ilike.${like}`);
+  }
+  if (options?.status === "active") query = query.eq("is_approved", true);
+  if (options?.status === "pending") query = query.eq("is_approved", false);
+
+  const [{ data: profiles, count, error: profilesError }, { count: pendingTotal, error: pendingError }] =
+    await Promise.all([
+      query,
+      supabase.from("profiles").select("id", { count: "exact", head: true }).eq("is_approved", false),
+    ]);
 
   if (profilesError) {
     console.error("getAdminUsers failed:", profilesError.message);
-    return [];
+    return { users: [], total: 0, pendingTotal: 0, page, pageSize };
   }
+  if (pendingError) console.error("getAdminUsers (pending total) failed:", pendingError.message);
+
+  const pageUserIds = (profiles ?? []).map((p) => p.id as string);
+  const { data: members, error: membersError } =
+    pageUserIds.length > 0
+      ? await supabase.from("community_members").select("user_id").in("user_id", pageUserIds)
+      : { data: [] as { user_id: string }[], error: null };
   if (membersError) console.error("getAdminUsers (members) failed:", membersError.message);
 
   const counts = new Map<string, number>();
@@ -83,7 +130,7 @@ export async function getAdminUsers(supabase: SupabaseClient): Promise<AdminUser
     counts.set(row.user_id, (counts.get(row.user_id) ?? 0) + 1);
   }
 
-  return (profiles ?? []).map((row) => ({
+  const users = (profiles ?? []).map((row) => ({
     id: row.id,
     fullName: row.full_name,
     username: row.username,
@@ -95,6 +142,8 @@ export async function getAdminUsers(supabase: SupabaseClient): Promise<AdminUser
     createdAt: row.created_at,
     communityCount: counts.get(row.id) ?? 0,
   }));
+
+  return { users, total: count ?? 0, pendingTotal: pendingTotal ?? 0, page, pageSize };
 }
 
 export type AdminCommunity = {
@@ -109,37 +158,38 @@ export type AdminCommunity = {
   archivedAt: string | null;
 };
 
-/** Communities for the admin table — member/post counts aggregated
- * client-side from the same select-all tables the regular Communities page
- * already reads (see lib/communities.ts's getCommunities for the pattern). */
+/** Communities for the admin table — member/post counts come from the
+ * get_community_member_counts()/get_community_post_counts() RPCs (SECURITY
+ * INVOKER group-by aggregates in Postgres) instead of reading every
+ * community_members/activity_items row to count client-side. */
 export async function getAdminCommunities(supabase: SupabaseClient): Promise<AdminCommunity[]> {
   const [
     { data: communities, error: communitiesError },
-    { data: members, error: membersError },
-    { data: posts, error: postsError },
+    { data: memberCounts, error: membersError },
+    { data: postCountRows, error: postsError },
   ] = await Promise.all([
     supabase
       .from("communities")
       .select("id, name, icon_url, created_by, created_at, archived_at, owner:profiles!communities_created_by_fkey(full_name)")
       .order("created_at", { ascending: false }),
-    supabase.from("community_members").select("community_id"),
-    supabase.from("activity_items").select("community_id").not("community_id", "is", null),
+    supabase.rpc("get_community_member_counts"),
+    supabase.rpc("get_community_post_counts"),
   ]);
 
   if (communitiesError) {
     console.error("getAdminCommunities failed:", communitiesError.message);
     return [];
   }
-  if (membersError) console.error("getAdminCommunities (members) failed:", membersError.message);
-  if (postsError) console.error("getAdminCommunities (posts) failed:", postsError.message);
+  if (membersError) console.error("getAdminCommunities (member counts) failed:", membersError.message);
+  if (postsError) console.error("getAdminCommunities (post counts) failed:", postsError.message);
 
-  const memberCounts = new Map<string, number>();
-  for (const row of (members ?? []) as { community_id: string }[]) {
-    memberCounts.set(row.community_id, (memberCounts.get(row.community_id) ?? 0) + 1);
+  const memberCountMap = new Map<string, number>();
+  for (const row of (memberCounts ?? []) as { community_id: string; member_count: number }[]) {
+    memberCountMap.set(row.community_id, Number(row.member_count));
   }
   const postCounts = new Map<string, number>();
-  for (const row of (posts ?? []) as { community_id: string }[]) {
-    postCounts.set(row.community_id, (postCounts.get(row.community_id) ?? 0) + 1);
+  for (const row of (postCountRows ?? []) as { community_id: string; post_count: number }[]) {
+    postCounts.set(row.community_id, Number(row.post_count));
   }
 
   type Row = {
@@ -158,7 +208,7 @@ export async function getAdminCommunities(supabase: SupabaseClient): Promise<Adm
     iconUrl: row.icon_url,
     ownerId: row.created_by,
     ownerName: row.owner?.full_name ?? "—",
-    memberCount: memberCounts.get(row.id) ?? 0,
+    memberCount: memberCountMap.get(row.id) ?? 0,
     postCount: postCounts.get(row.id) ?? 0,
     createdAt: row.created_at,
     archivedAt: row.archived_at,
@@ -331,12 +381,15 @@ export async function getAdminAxStats(supabase: SupabaseClient): Promise<AdminAx
 
 /** Edits an existing level's title/threshold, or adds a new one. levels has
  * no admin-write RLS policy (select-all only), so this goes through the
- * admin_upsert_level RPC. */
+ * admin_upsert_level RPC. Clears getLevels()'s in-process cache afterward —
+ * previously that cache was never invalidated, so an admin's edit here
+ * silently never reached anyone until the server process restarted. */
 export async function adminUpsertLevel(supabase: SupabaseClient, level: number, title: string, minAx: number): Promise<void> {
   const { error } = await supabase.rpc("admin_upsert_level", { p_level: level, p_title: title, p_min_ax: minAx });
   if (error) {
     throw new Error(error.message);
   }
+  invalidateLevelsCache();
 }
 
 export const ADMIN_AX_GRANT_MAX = 1000;
@@ -393,29 +446,36 @@ export type AdminLivestream = {
   startedAt: string;
 };
 
-/** Upcoming events and today's livestreams across every community — both
- * tables are select-all for authenticated users already. */
+/** Upcoming events and today's livestreams across every community.
+ * Registrations are scoped to the fetched events via `.in()` instead of
+ * reading the entire event_registrations table. */
 export async function getAdminEventsAndLive(
   supabase: SupabaseClient
 ): Promise<{ events: AdminEvent[]; livestreams: AdminLivestream[] }> {
-  const [{ data: events, error: eventsError }, { data: regs, error: regsError }, { data: streams, error: streamsError }] =
-    await Promise.all([
-      supabase
-        .from("events")
-        .select("id, title, event_date, community_id, community:communities(name)")
-        .order("event_date", { ascending: true })
-        .limit(100),
-      supabase.from("event_registrations").select("event_id").neq("status", "cancelled"),
-      supabase
-        .from("community_livestreams")
-        .select("id, title, community_id, status, started_at, community:communities(name), host:profiles!community_livestreams_host_id_fkey(full_name)")
-        .order("started_at", { ascending: false })
-        .limit(50),
-    ]);
+  const [{ data: events, error: eventsError }, { data: streams, error: streamsError }] = await Promise.all([
+    supabase
+      .from("events")
+      .select("id, title, event_date, community_id, community:communities(name)")
+      .order("event_date", { ascending: true })
+      .limit(100),
+    supabase
+      .from("community_livestreams")
+      .select("id, title, community_id, status, started_at, community:communities(name), host:profiles!community_livestreams_host_id_fkey(full_name)")
+      .order("started_at", { ascending: false })
+      .limit(50),
+  ]);
 
   if (eventsError) console.error("getAdminEventsAndLive (events) failed:", eventsError.message);
-  if (regsError) console.error("getAdminEventsAndLive (registrations) failed:", regsError.message);
   if (streamsError) console.error("getAdminEventsAndLive (streams) failed:", streamsError.message);
+
+  const eventIds = ((events ?? []) as { id: string }[]).map((e) => e.id);
+
+  const { data: regs, error: regsError } =
+    eventIds.length > 0
+      ? await supabase.from("event_registrations").select("event_id").in("event_id", eventIds).neq("status", "cancelled")
+      : { data: [] as { event_id: string }[], error: null };
+
+  if (regsError) console.error("getAdminEventsAndLive (registrations) failed:", regsError.message);
 
   const regCounts = new Map<string, number>();
   for (const row of (regs ?? []) as { event_id: string }[]) {

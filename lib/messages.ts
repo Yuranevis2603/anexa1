@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export type MessageParticipant = {
@@ -173,6 +174,15 @@ export async function getTotalUnreadCount(supabase: SupabaseClient, userId: stri
   const conversations = await getConversations(supabase, userId);
   return conversations.reduce((sum, c) => sum + c.unreadCount, 0);
 }
+
+/** Same as getTotalUnreadCount, memoized per request via React cache() —
+ * for Server Components only. app/dashboard/layout.tsx and
+ * DashboardOverview.tsx both need this count in the same request; without
+ * this it ran getConversations() (3 queries, incl. a scan of up to
+ * RECENT_MESSAGES_SCAN messages) twice per /dashboard load. Client
+ * Components (e.g. the presence provider's live badge) must keep using
+ * plain getTotalUnreadCount — cache() isn't for Client Component use. */
+export const getCachedTotalUnreadCount = cache(getTotalUnreadCount);
 
 const MESSAGE_SELECT =
   "id, conversation_id, sender_id, content, created_at, attachment_path, attachment_name, attachment_type, attachment_size";

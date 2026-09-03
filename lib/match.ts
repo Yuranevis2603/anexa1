@@ -60,21 +60,22 @@ export async function getTopMatch(
   supabase: SupabaseClient,
   me: Pick<Profile, "id" | "skills" | "interests" | "business_goals">
 ): Promise<MatchCandidate | null> {
-  const { data: connections } = await supabase
-    .from("connections")
-    .select("requester_id, addressee_id")
-    .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`);
+  const [{ data: connections }, { data, error }] = await Promise.all([
+    supabase
+      .from("connections")
+      .select("requester_id, addressee_id")
+      .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`),
+    supabase
+      .from("profiles")
+      .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
+      .neq("id", me.id)
+      .limit(50),
+  ]);
 
   const excluded = new Set<string>([me.id]);
   for (const c of (connections ?? []) as { requester_id: string; addressee_id: string }[]) {
     excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
   }
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
-    .neq("id", me.id)
-    .limit(50);
 
   if (error || !data) {
     if (error) console.error("getTopMatch failed:", error.message);
@@ -104,26 +105,27 @@ export async function getMatchRecommendations(
   me: Pick<Profile, "id" | "skills" | "interests" | "business_goals">,
   limit: number
 ): Promise<MatchCandidate[]> {
-  const { data: connections } = await supabase
-    .from("connections")
-    .select("requester_id, addressee_id")
-    .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`);
-
-  const excluded = new Set<string>([me.id]);
-  for (const c of (connections ?? []) as { requester_id: string; addressee_id: string }[]) {
-    excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
-  }
-
   // Scan a bounded multiple of what's actually needed instead of an
   // unconditional flat 200 — keeps this cheap as the member base grows
   // while still giving the overlap scorer enough candidates to rank.
   const scanLimit = Math.min(Math.max(limit * 5, 50), 200);
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
-    .neq("id", me.id)
-    .limit(scanLimit);
+  const [{ data: connections }, { data, error }] = await Promise.all([
+    supabase
+      .from("connections")
+      .select("requester_id, addressee_id")
+      .or(`requester_id.eq.${me.id},addressee_id.eq.${me.id}`),
+    supabase
+      .from("profiles")
+      .select("id, full_name, role_title, company, avatar_url, bio, skills, interests, business_goals, username")
+      .neq("id", me.id)
+      .limit(scanLimit),
+  ]);
+
+  const excluded = new Set<string>([me.id]);
+  for (const c of (connections ?? []) as { requester_id: string; addressee_id: string }[]) {
+    excluded.add(c.requester_id === me.id ? c.addressee_id : c.requester_id);
+  }
 
   if (error || !data) {
     if (error) console.error("getMatchRecommendations failed:", error.message);
