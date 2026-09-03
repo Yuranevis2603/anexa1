@@ -27,8 +27,8 @@ export default function CommunitiesStep({
   error: string | null;
 }) {
   const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
   const [communities, setCommunities] = useState<Community[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const tags = useMemo(
     () => [...draft.skills, ...draft.interests, ...draft.business_goals, ...draft.industries],
@@ -37,18 +37,18 @@ export default function CommunitiesStep({
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       const supabase = createClient();
       const all = await getCommunities(supabase, userId);
       if (cancelled) return;
       setCommunities(all);
-      setLoadError(all.length === 0);
       setLoading(false);
     })();
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, reloadKey]);
 
   function handleChanged(communityId: string, isMember: boolean, hasPendingRequest = false) {
     setCommunities((prev) => prev.map((c) => (c.id === communityId ? { ...c, isMember, hasPendingRequest } : c)));
@@ -81,16 +81,29 @@ export default function CommunitiesStep({
               <CommunityCard key={c.id} userId={userId} community={c} onChanged={handleChanged} />
             ))}
           </div>
+        ) : communities.length === 0 ? (
+          <div className="rounded-xl border border-border-subtle bg-white/[0.02] p-4 text-center text-[13px] text-ink-tertiary">
+            <p>Не вдалося завантажити спільноти — можливо, тимчасова проблема зі з&apos;єднанням.</p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="mt-2.5 text-[12.5px] font-medium text-purple-soft transition-colors hover:text-purple"
+            >
+              Спробувати ще раз
+            </button>
+          </div>
         ) : (
           <p className="rounded-xl border border-border-subtle bg-white/[0.02] p-4 text-[13px] text-ink-tertiary">
-            {loadError
-              ? "Поки немає доступних спільнот — можна приєднатися пізніше з розділу «Спільноти»."
-              : "Ви вже приєдналися до всіх релевантних спільнот."}
+            Ви вже приєдналися до всіх релевантних спільнот.
           </p>
         )}
       </div>
 
-      {error && <p className="mt-4 text-[12.5px] text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-[12.5px] text-danger">
+          {error}
+        </p>
+      )}
 
       <StepNav onBack={onBack} onSkip={onSkip} onNext={onNext} saving={saving} />
     </div>

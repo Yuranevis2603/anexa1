@@ -46,7 +46,11 @@ export default function TagPickerStep({
         <TagInput label="Або додайте свій варіант" values={values} onChange={onChange} placeholder={placeholder} />
       </div>
 
-      {error && <p className="mt-4 text-[12.5px] text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-[12.5px] text-danger">
+          {error}
+        </p>
+      )}
 
       <StepNav onBack={onBack} onSkip={onSkip} onNext={onNext} saving={saving} />
     </div>

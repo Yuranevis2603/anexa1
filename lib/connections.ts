@@ -1,12 +1,22 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { trackEvent } from "./analytics";
 
 /** Sends a connection request ("Познайомитися"). Duplicate requests are
- * rejected by the unique (requester_id, addressee_id) constraint. */
+ * rejected by the unique (requester_id, addressee_id) constraint. This is
+ * the single call site behind every "connect" UI in the app (recommendation
+ * cards, profile pages, invite flow, onboarding's People step), so it's
+ * also where the `first_connection` activation event is fired — one check,
+ * not one per caller. */
 export async function requestConnection(
   supabase: SupabaseClient,
   requesterId: string,
   addresseeId: string
 ): Promise<void> {
+  const { count: priorCount } = await supabase
+    .from("connections")
+    .select("id", { count: "exact", head: true })
+    .eq("requester_id", requesterId);
+
   const { error } = await supabase
     .from("connections")
     .insert({ requester_id: requesterId, addressee_id: addresseeId });
@@ -16,6 +26,10 @@ export async function requestConnection(
       throw new Error("Запит на знайомство вже надіслано.");
     }
     throw new Error(error.message);
+  }
+
+  if ((priorCount ?? 0) === 0) {
+    void trackEvent(supabase, requesterId, "first_connection");
   }
 }
 

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import type { Profile } from "@/lib/profile";
+import { profileCompleteness, type Profile } from "@/lib/profile";
+import { trackEvent } from "@/lib/analytics";
 import { GOAL_OPTIONS, INDUSTRY_OPTIONS, INTEREST_OPTIONS, ONBOARDING_TOTAL_STEPS, SKILL_OPTIONS, completeOnboarding } from "@/lib/onboarding";
 import OnboardingProgress from "./OnboardingProgress";
 import WelcomeStep from "./steps/WelcomeStep";
@@ -69,6 +70,16 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const profileCompletedTracked = useRef(false);
+
+  // Fires once, only when this is a genuine first arrival (step 1, not yet
+  // completed) — not on every resume of an in-progress flow.
+  useEffect(() => {
+    if (step === 1 && !profile.onboarding_completed) {
+      void trackEvent(createClient(), userId, "onboarding_started");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function patch(fields: Partial<OnboardingDraft>) {
     setDraft((d) => ({ ...d, ...fields }));
@@ -92,11 +103,28 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
         .eq("id", userId);
       if (updateError) throw new Error(updateError.message);
       setStep(nextStep);
+
+      // Fire profile_completed the first time the draft (with this step's
+      // fields applied) satisfies the same completeness definition used
+      // everywhere else in the app (lib/profile.ts's profileCompleteness) —
+      // reused as-is, not reimplemented.
+      if (!profileCompletedTracked.current) {
+        const merged = { ...draft, ...fields } as unknown as Profile;
+        if (profileCompleteness(merged) >= 100) {
+          profileCompletedTracked.current = true;
+          void trackEvent(supabase, userId, "profile_completed");
+        }
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Не вдалося зберегти. Перевірте з'єднання і спробуйте ще раз.");
     } finally {
       setSaving(false);
     }
+  }
+
+  function goSkip() {
+    void trackEvent(createClient(), userId, "onboarding_skipped", { step });
+    void goNext();
   }
 
   function goBack() {
@@ -113,6 +141,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
     try {
       const supabase = createClient();
       await completeOnboarding(supabase, userId);
+      void trackEvent(supabase, userId, "onboarding_completed");
       router.push("/dashboard");
       router.refresh();
     } catch (err) {
@@ -155,7 +184,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
                 onChange={(v) => patch({ skills: v })}
                 placeholder="напр. Копірайтинг"
                 onBack={goBack}
-                onSkip={() => goNext()}
+                onSkip={goSkip}
                 onNext={() => goNext()}
                 saving={saving}
                 error={error}
@@ -171,7 +200,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
                 onChange={(v) => patch({ interests: v })}
                 placeholder="напр. Логістика"
                 onBack={goBack}
-                onSkip={() => goNext()}
+                onSkip={goSkip}
                 onNext={() => goNext()}
                 saving={saving}
                 error={error}
@@ -187,7 +216,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
                 onChange={(v) => patch({ business_goals: v })}
                 placeholder="Своя ціль"
                 onBack={goBack}
-                onSkip={() => goNext()}
+                onSkip={goSkip}
                 onNext={() => goNext()}
                 saving={saving}
                 error={error}
@@ -199,7 +228,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
                 userId={userId}
                 draft={draft}
                 onBack={goBack}
-                onSkip={() => goNext()}
+                onSkip={goSkip}
                 onNext={() => goNext()}
                 saving={saving}
                 error={error}
@@ -211,7 +240,7 @@ export default function OnboardingFlow({ userId, profile }: { userId: string; pr
                 userId={userId}
                 draft={draft}
                 onBack={goBack}
-                onSkip={() => goNext()}
+                onSkip={goSkip}
                 onNext={() => goNext()}
                 saving={saving}
                 error={error}

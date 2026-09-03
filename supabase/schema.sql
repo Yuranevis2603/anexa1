@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-03 (latest: performance pass — get_community_member_counts()/get_community_post_counts() RPCs, indexes on profiles.is_approved/created_at, community_join_requests.user_id, user_reports open-queue).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-03 (latest: onboarding activation pass — analytics_events table for onboarding/activation funnel events).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -2369,6 +2369,39 @@ alter table public.admin_audit_log enable row level security;
 
 create policy "admin_audit_log_select_admin"
   on public.admin_audit_log for select
+  to authenticated
+  using (exists (select 1 from public.profiles where id = (select auth.uid()) and is_platform_admin));
+
+-- ============================================================================
+-- analytics_events
+-- Lightweight product-analytics event log for onboarding/activation funnel
+-- tracking (onboarding_started/completed/skipped, profile_completed,
+-- first_connection, first_community_join). Append-only, modeled on
+-- admin_audit_log's shape above rather than a new pattern. Written by
+-- lib/analytics.ts's trackEvent() and from lib/connections.ts's
+-- requestConnection()/lib/communities.ts's joinCommunity() for the "first_"
+-- milestones. Not user-facing — only platform admins can read it back.
+-- ============================================================================
+create table if not exists public.analytics_events (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles(id) on delete cascade,
+  event text not null,
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_analytics_events_user_event on public.analytics_events (user_id, event);
+create index if not exists idx_analytics_events_created_at on public.analytics_events (created_at desc);
+
+alter table public.analytics_events enable row level security;
+
+create policy "analytics_events_insert_own"
+  on public.analytics_events for insert
+  to authenticated
+  with check (user_id = (select auth.uid()));
+
+create policy "analytics_events_select_admin"
+  on public.analytics_events for select
   to authenticated
   using (exists (select 1 from public.profiles where id = (select auth.uid()) and is_platform_admin));
 

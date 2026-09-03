@@ -8,7 +8,14 @@ export default function OnboardingProgress({ step, total }: { step: number; tota
         </span>
         <span>{percent}%</span>
       </div>
-      <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
+      <div
+        role="progressbar"
+        aria-valuenow={percent}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-label={`Крок ${step} з ${total}`}
+        className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]"
+      >
         <div
           className="h-full rounded-full bg-grad-purple-blue transition-[width] duration-300 ease-out"
           style={{ width: `${percent}%` }}

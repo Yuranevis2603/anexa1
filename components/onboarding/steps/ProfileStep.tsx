@@ -148,7 +148,11 @@ export default function ProfileStep({
         </div>
         <input ref={fileInputRef} type="file" accept="image/*" onChange={handleAvatarChange} className="hidden" />
       </div>
-      {uploadError && <p className="mt-2 text-[12.5px] text-danger">{uploadError}</p>}
+      {uploadError && (
+        <p role="alert" className="mt-2 text-[12.5px] text-danger">
+          {uploadError}
+        </p>
+      )}
 
       <div className="mt-4 flex flex-col gap-4">
         <Field label="Повне ім'я" value={draft.full_name} onChange={(v) => onChange({ full_name: v })} placeholder="Ваше ім'я" />
@@ -177,7 +181,11 @@ export default function ProfileStep({
         </div>
       </div>
 
-      {error && <p className="mt-4 text-[12.5px] text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-[12.5px] text-danger">
+          {error}
+        </p>
+      )}
 
       <StepNav onBack={onBack} onNext={handleContinue} saving={saving || uploading} nextDisabled={!draft.full_name.trim()} />
     </div>

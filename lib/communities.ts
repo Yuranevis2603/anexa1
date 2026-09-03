@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { trackEvent } from "./analytics";
 
 export type CommunityRule = { title: string; body: string };
 export type CommunityAccess = "public" | "request" | "private";
@@ -220,10 +221,23 @@ export async function updateCommunity(
   return fields;
 }
 
+/** The single call site behind every "join" UI in the app (CommunityCard,
+ * CommunityDetailView, and createCommunity's own auto-join of its creator),
+ * so this is also where the `first_community_join` activation event fires —
+ * one check here instead of one per caller. */
 export async function joinCommunity(supabase: SupabaseClient, userId: string, communityId: string): Promise<void> {
+  const { count: priorCount } = await supabase
+    .from("community_members")
+    .select("community_id", { count: "exact", head: true })
+    .eq("user_id", userId);
+
   const { error } = await supabase.from("community_members").insert({ community_id: communityId, user_id: userId });
   if (error) {
     throw new Error(error.message);
+  }
+
+  if ((priorCount ?? 0) === 0) {
+    void trackEvent(supabase, userId, "first_community_join");
   }
 }
 

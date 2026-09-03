@@ -49,7 +49,11 @@ export default function CompleteStep({
         ))}
       </div>
 
-      {error && <p className="mt-4 text-[12.5px] text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-[12.5px] text-danger">
+          {error}
+        </p>
+      )}
 
       <button
         type="button"

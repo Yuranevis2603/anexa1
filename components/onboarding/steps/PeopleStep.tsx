@@ -27,9 +27,11 @@ export default function PeopleStep({
 }) {
   const [loading, setLoading] = useState(true);
   const [matches, setMatches] = useState<MatchCandidate[]>([]);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setLoading(true);
     (async () => {
       const supabase = createClient();
       const recommendations = await getMatchRecommendations(
@@ -45,9 +47,10 @@ export default function PeopleStep({
       cancelled = true;
     };
     // Recommendations are computed once from the picks made in prior steps —
-    // no need to re-run as the user clicks Connect on cards below.
+    // no need to re-run as the user clicks Connect on cards below. reloadKey
+    // is the one deliberate exception, bumped by the empty-state retry button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [userId, reloadKey]);
 
   return (
     <div>
@@ -68,13 +71,24 @@ export default function PeopleStep({
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-border-subtle bg-white/[0.02] p-4 text-[13px] text-ink-tertiary">
-            Поки що замало даних для точних рекомендацій — вони з'являться на дашборді, щойно спільнота підросте.
-          </p>
+          <div className="rounded-xl border border-border-subtle bg-white/[0.02] p-4 text-center text-[13px] text-ink-tertiary">
+            <p>Поки що замало даних для точних рекомендацій — вони з&apos;являться на дашборді, щойно спільнота підросте.</p>
+            <button
+              type="button"
+              onClick={() => setReloadKey((k) => k + 1)}
+              className="mt-2.5 text-[12.5px] font-medium text-purple-soft transition-colors hover:text-purple"
+            >
+              Спробувати ще раз
+            </button>
+          </div>
         )}
       </div>
 
-      {error && <p className="mt-4 text-[12.5px] text-danger">{error}</p>}
+      {error && (
+        <p role="alert" className="mt-4 text-[12.5px] text-danger">
+          {error}
+        </p>
+      )}
 
       <StepNav onBack={onBack} onSkip={onSkip} onNext={onNext} saving={saving} nextLabel="Завершити" />
     </div>
