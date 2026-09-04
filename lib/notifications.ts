@@ -13,7 +13,16 @@ export type NotificationType =
   | "event_registration"
   | "event_reminder"
   | "admin_broadcast"
-  | "admin_ax_grant";
+  | "admin_ax_grant"
+  | "admin_ax_deduct";
+
+/** Types that always come from the platform itself, never a person — these
+ * render with the ANEXA mark instead of a person's avatar/generic icon. */
+export const ANEXA_TEAM_NOTIFICATION_TYPES: readonly NotificationType[] = [
+  "admin_broadcast",
+  "admin_ax_grant",
+  "admin_ax_deduct",
+];
 
 export type Notification = {
   id: string;
@@ -157,9 +166,14 @@ export function describeNotification(n: Notification): { text: string; href: str
     case "event_reminder":
       return { text: "Подія, на яку ви зареєстровані, скоро розпочнеться", href: "/dashboard/events" };
     case "admin_broadcast":
-      return { text: n.title ?? "Повідомлення від адміністрації", href: "/dashboard/notifications" };
+      return {
+        text: n.title ? `Команда ANEXA: ${n.title}` : "Повідомлення від команди ANEXA",
+        href: "/dashboard/notifications",
+      };
     case "admin_ax_grant":
       return { text: n.body ?? "Команда ANEXA нарахувала вам AX", href: "/dashboard/profile" };
+    case "admin_ax_deduct":
+      return { text: n.body ?? "Команда ANEXA списала вам AX", href: "/dashboard/profile" };
   }
 }
 
@@ -178,6 +192,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   event_reminder: "Нагадування про подію",
   admin_broadcast: "Повідомлення від адміністрації",
   admin_ax_grant: "Нарахування AX від адміністрації",
+  admin_ax_deduct: "Списання AX адміністрацією",
 };
 
 /** Which notification types `userId` opted out of. Missing row = none (all enabled). */

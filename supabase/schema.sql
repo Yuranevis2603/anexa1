@@ -1735,7 +1735,7 @@ create table if not exists public.notifications (
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
     'referral_joined', 'profile_approved', 'event_registration', 'event_reminder', 'admin_broadcast',
-    'admin_ax_grant'
+    'admin_ax_grant', 'admin_ax_deduct'
   )),
   entity_type text,
   entity_id uuid,
@@ -2548,6 +2548,8 @@ grant execute on function public.admin_grant_ax(uuid, integer, text) to authenti
 
 -- Manual AX deduction for one member, symmetric to admin_grant_ax — capped
 -- at 1000 per call, floors at 0 so it can never send a member negative.
+-- Also notifies the recipient, same branded (actor_id null) treatment as
+-- admin_ax_grant above.
 create or replace function public.admin_deduct_ax(p_user_id uuid, p_amount integer, p_note text)
 returns void
 language plpgsql
@@ -2577,6 +2579,15 @@ begin
     set ax_points = greatest(0, public.profile_gamification.ax_points - p_amount),
         ax_balance = greatest(0, public.profile_gamification.ax_balance - p_amount),
         updated_at = now();
+
+  insert into public.notifications (user_id, actor_id, type, title, body)
+  select p_user_id, null, 'admin_ax_deduct', 'Списано AX',
+    'Команда ANEXA списала вам ' || p_amount || ' AX' ||
+    (case when coalesce(trim(p_note), '') <> '' then ' — ' || p_note else '' end)
+  where not exists (
+    select 1 from public.notification_preferences np
+    where np.user_id = p_user_id and 'admin_ax_deduct' = any(np.disabled_types)
+  );
 
   perform public.log_admin_action(
     v_admin, 'deduct_ax', 'profile', p_user_id,

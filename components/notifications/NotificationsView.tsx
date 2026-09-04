@@ -2,9 +2,11 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, CalendarClock, Check, CheckCheck, Coins, Heart, Megaphone, MessageCircle, Star, UserPlus, Users } from "lucide-react";
+import Image from "next/image";
+import { BadgeCheck, CalendarClock, Check, CheckCheck, Coins, Heart, Megaphone, MessageCircle, MinusCircle, Star, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
+  ANEXA_TEAM_NOTIFICATION_TYPES,
   describeNotification,
   formatNotificationTime,
   markAllNotificationsRead,
@@ -29,6 +31,7 @@ const TYPE_ICON: Record<NotificationType, { Icon: typeof Heart; className: strin
   event_reminder: { Icon: CalendarClock, className: "bg-gold/10 text-gold" },
   admin_broadcast: { Icon: Megaphone, className: "bg-purple/10 text-purple-soft" },
   admin_ax_grant: { Icon: Coins, className: "bg-gold/10 text-gold" },
+  admin_ax_deduct: { Icon: MinusCircle, className: "bg-danger/10 text-danger" },
 };
 
 export default function NotificationsView({
@@ -112,7 +115,11 @@ export default function NotificationsView({
                   n.readAt ? "" : "bg-white/[0.02]"
                 }`}
               >
-                {n.actorAvatarUrl !== null || n.actorName ? (
+                {ANEXA_TEAM_NOTIFICATION_TYPES.includes(n.type) ? (
+                  <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-full">
+                    <Image src="/anexa-logo.png" alt="ANEXA" fill sizes="40px" className="object-cover" />
+                  </div>
+                ) : n.actorAvatarUrl !== null || n.actorName ? (
                   <Avatar
                     src={n.actorAvatarUrl}
                     name={n.actorName ?? "?"}
