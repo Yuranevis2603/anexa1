@@ -1734,7 +1734,8 @@ create table if not exists public.notifications (
   actor_id uuid references public.profiles(id),
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
-    'referral_joined', 'profile_approved', 'event_registration', 'event_reminder', 'admin_broadcast'
+    'referral_joined', 'profile_approved', 'event_registration', 'event_reminder', 'admin_broadcast',
+    'admin_ax_grant'
   )),
   entity_type text,
   entity_id uuid,
@@ -2386,7 +2387,11 @@ grant execute on function public.admin_delete_post(uuid) to authenticated;
 
 -- Sends one notification to every member (skips whoever opted out of the
 -- 'admin_broadcast' type via notification_preferences, same mechanism every
--- other type already respects).
+-- other type already respects). actor_id is null, not the sending admin's
+-- own profile — this is meant to read as an official ANEXA message, not a
+-- personal one (the notification list falls back to a generic type icon
+-- instead of the admin's real name/avatar). Who actually sent it stays
+-- fully traceable via admin_audit_log below.
 create or replace function public.admin_broadcast_notification(p_title text, p_body text)
 returns integer
 language plpgsql
@@ -2406,7 +2411,7 @@ begin
   end if;
 
   insert into public.notifications (user_id, actor_id, type, title, body)
-  select p.id, v_admin, 'admin_broadcast', p_title, p_body
+  select p.id, null, 'admin_broadcast', p_title, p_body
   from public.profiles p
   where p.id <> v_admin
     and not exists (
@@ -2489,7 +2494,10 @@ grant execute on function public.admin_upsert_level(integer, text, integer) to a
 -- Manual AX grant for one member, capped at 1000 per call so an admin
 -- can't accidentally (or maliciously, if the account is compromised) mint
 -- unbounded AX in one shot. Logs to ax_events (source 'admin_grant') same
--- as every other AX award, plus admin_audit_log.
+-- as every other AX award, plus admin_audit_log. Also notifies the
+-- recipient (actor_id null — same branded-not-personal treatment as
+-- admin_broadcast_notification above) so a grant doesn't silently show up
+-- only as a balance change.
 create or replace function public.admin_grant_ax(p_user_id uuid, p_amount integer, p_note text)
 returns void
 language plpgsql
@@ -2519,6 +2527,15 @@ begin
     set ax_points = public.profile_gamification.ax_points + p_amount,
         ax_balance = public.profile_gamification.ax_balance + p_amount,
         updated_at = now();
+
+  insert into public.notifications (user_id, actor_id, type, title, body)
+  select p_user_id, null, 'admin_ax_grant', 'Нараховано AX',
+    'Команда ANEXA нарахувала вам ' || p_amount || ' AX' ||
+    (case when coalesce(trim(p_note), '') <> '' then ' — ' || p_note else '' end)
+  where not exists (
+    select 1 from public.notification_preferences np
+    where np.user_id = p_user_id and 'admin_ax_grant' = any(np.disabled_types)
+  );
 
   perform public.log_admin_action(
     v_admin, 'grant_ax', 'profile', p_user_id,

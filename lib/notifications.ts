@@ -12,7 +12,8 @@ export type NotificationType =
   | "profile_approved"
   | "event_registration"
   | "event_reminder"
-  | "admin_broadcast";
+  | "admin_broadcast"
+  | "admin_ax_grant";
 
 export type Notification = {
   id: string;
@@ -157,6 +158,8 @@ export function describeNotification(n: Notification): { text: string; href: str
       return { text: "Подія, на яку ви зареєстровані, скоро розпочнеться", href: "/dashboard/events" };
     case "admin_broadcast":
       return { text: n.title ?? "Повідомлення від адміністрації", href: "/dashboard/notifications" };
+    case "admin_ax_grant":
+      return { text: n.body ?? "Команда ANEXA нарахувала вам AX", href: "/dashboard/profile" };
   }
 }
 
@@ -174,6 +177,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   event_registration: "Підтвердження реєстрації на подію",
   event_reminder: "Нагадування про подію",
   admin_broadcast: "Повідомлення від адміністрації",
+  admin_ax_grant: "Нарахування AX від адміністрації",
 };
 
 /** Which notification types `userId` opted out of. Missing row = none (all enabled). */

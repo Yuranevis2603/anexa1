@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, Bell, CalendarClock, Check, Heart, Loader2, Megaphone, MessageCircle, Star, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, Bell, CalendarClock, Check, Coins, Heart, Loader2, Megaphone, MessageCircle, Star, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   describeNotification,
@@ -28,6 +28,7 @@ const TYPE_ICON: Record<NotificationType, { Icon: typeof Bell; className: string
   event_registration: { Icon: CalendarClock, className: "bg-purple/10 text-purple-soft" },
   event_reminder: { Icon: CalendarClock, className: "bg-gold/10 text-gold" },
   admin_broadcast: { Icon: Megaphone, className: "bg-purple/10 text-purple-soft" },
+  admin_ax_grant: { Icon: Coins, className: "bg-gold/10 text-gold" },
 };
 
 /** Live "who's online"-style bell: seeds from the server-rendered unread
