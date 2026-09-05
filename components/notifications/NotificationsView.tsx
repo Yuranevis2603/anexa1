@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { BadgeCheck, CalendarClock, Check, CheckCheck, Coins, Heart, Megaphone, MessageCircle, MinusCircle, Star, UserPlus, Users } from "lucide-react";
+import { BadgeCheck, CalendarClock, Check, CheckCheck, Coins, Heart, Megaphone, MessageCircle, MinusCircle, Radio, Star, UserPlus, Users } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import {
   ANEXA_TEAM_NOTIFICATION_TYPES,
@@ -32,6 +32,7 @@ const TYPE_ICON: Record<NotificationType, { Icon: typeof Heart; className: strin
   admin_broadcast: { Icon: Megaphone, className: "bg-purple/10 text-purple-soft" },
   admin_ax_grant: { Icon: Coins, className: "bg-gold/10 text-gold" },
   admin_ax_deduct: { Icon: MinusCircle, className: "bg-danger/10 text-danger" },
+  community_live: { Icon: Radio, className: "bg-danger/10 text-danger" },
 };
 
 export default function NotificationsView({

@@ -1,13 +1,36 @@
-import { CalendarClock, Radio } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { CalendarClock, Loader2, Radio } from "lucide-react";
+import { endLivestream } from "@/lib/livestreams";
 import type { AdminEvent, AdminLivestream } from "@/lib/admin";
+import { useToast } from "@/components/ui/ToastProvider";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export default function AdminEventsLive({ events, livestreams }: { events: AdminEvent[]; livestreams: AdminLivestream[] }) {
-  const live = livestreams.filter((s) => s.status === "live");
-  const past = livestreams.filter((s) => s.status !== "live");
+  const { showToast } = useToast();
+  const [rows, setRows] = useState(livestreams);
+  const [endingId, setEndingId] = useState<string | null>(null);
+
+  const live = rows.filter((s) => s.status === "live");
+  const past = rows.filter((s) => s.status !== "live");
+
+  async function handleEnd(streamId: string) {
+    if (endingId) return;
+    setEndingId(streamId);
+    try {
+      await endLivestream(streamId);
+      setRows((prev) => prev.map((s) => (s.id === streamId ? { ...s, status: "ended" } : s)));
+      showToast("success", "Ефір завершено.");
+    } catch (err) {
+      showToast("error", err instanceof Error ? err.message : "Не вдалося завершити ефір.");
+    } finally {
+      setEndingId(null);
+    }
+  }
 
   return (
     <div>
@@ -56,6 +79,15 @@ export default function AdminEventsLive({ events, livestreams }: { events: Admin
                       {s.communityName} · веде {s.hostName}
                     </p>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => handleEnd(s.id)}
+                    disabled={endingId === s.id}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg border border-danger/35 px-3 py-1.5 text-[11.5px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
+                  >
+                    {endingId === s.id ? <Loader2 size={12} className="animate-spin" /> : null}
+                    Завершити
+                  </button>
                 </div>
               ))}
             </div>
