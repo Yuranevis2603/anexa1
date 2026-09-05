@@ -139,6 +139,10 @@ export default function CommunityDetailView({
   const isAdmin = isOwner || myRole === "admin";
   const isStaff = isAdmin || myRole === "moderator";
   const owner = useMemo(() => members.find((m) => m.isOwner) ?? null, [members]);
+  const memberDirectory = useMemo(
+    () => new Map(members.map((m) => [m.userId, { name: m.fullName, avatarUrl: m.avatarUrl }])),
+    [members]
+  );
 
   const filteredMembers = useMemo(() => {
     const term = memberQuery.trim().toLowerCase();
@@ -463,6 +467,7 @@ export default function CommunityDetailView({
                 active={activeLivestream}
                 onActiveChange={setActiveLivestream}
                 initialPast={initialPastLivestreams}
+                memberDirectory={memberDirectory}
               />
             ) : null}
 
