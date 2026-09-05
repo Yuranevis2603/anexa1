@@ -17,16 +17,22 @@ export default function LivestreamChat({
   livestreamId,
   userId,
   memberDirectory,
+  onMessageCountChange,
 }: {
   livestreamId: string;
   userId: string;
   memberDirectory: MemberDirectory;
+  onMessageCountChange?: (count: number) => void;
 }) {
   const { showToast } = useToast();
   const [messages, setMessages] = useState<LivestreamChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onMessageCountChange?.(messages.length);
+  }, [messages.length, onMessageCountChange]);
 
   useEffect(() => {
     let cancelled = false;
