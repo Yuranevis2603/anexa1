@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestreams.description — pre-live title/description).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: idx_community_livestreams_one_live — double-start protection).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -422,6 +422,15 @@ create table if not exists public.community_livestreams (
 );
 
 create index if not exists idx_community_livestreams_community_id on public.community_livestreams (community_id);
+
+-- Two staff members clicking "start" at the same moment must not both
+-- succeed — the POST handler's "end whatever was live" pass has a tiny
+-- race window, so the hard guarantee lives here: at most one 'live' row
+-- per community. A losing insert gets Postgres error 23505, which the API
+-- route turns into a friendly "already started" response.
+create unique index if not exists idx_community_livestreams_one_live
+  on public.community_livestreams (community_id)
+  where status = 'live';
 
 alter table public.community_livestreams enable row level security;
 

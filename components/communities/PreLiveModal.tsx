@@ -1,11 +1,30 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Mic, Radio, Video, X } from "lucide-react";
+import { Check, Loader2, Mic, Radio, Video, Wifi, WifiOff, X } from "lucide-react";
 import { startLivestream, type Livestream } from "@/lib/livestreams";
 import ModalPortal from "@/components/ui/ModalPortal";
 
 type DeviceOption = { deviceId: string; label: string };
+
+/** getUserMedia's DOMException.name values, mapped to plain-language Ukrainian
+ * — a speaker about to go live should never see "NotReadableError". */
+function describeMediaError(err: unknown): string {
+  const name = err instanceof DOMException ? err.name : "";
+  switch (name) {
+    case "NotAllowedError":
+    case "PermissionDeniedError":
+      return "Доступ до камери й мікрофона заборонено. Дозвольте доступ у налаштуваннях браузера і спробуйте ще раз.";
+    case "NotFoundError":
+    case "OverconstrainedError":
+      return "Камеру або мікрофон не знайдено. Перевірте, чи підключено пристрій.";
+    case "NotReadableError":
+    case "TrackStartError":
+      return "Камера або мікрофон вже використовуються іншим застосунком.";
+    default:
+      return "Немає доступу до камери або мікрофона. Можна все одно почати ефір — доступ запитається ще раз.";
+  }
+}
 
 export default function PreLiveModal({
   communityId,
@@ -29,12 +48,40 @@ export default function PreLiveModal({
   const [micId, setMicId] = useState("");
   const [previewReady, setPreviewReady] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [cameraOk, setCameraOk] = useState<boolean | null>(null);
+  const [micOk, setMicOk] = useState<boolean | null>(null);
+  const [online, setOnline] = useState(true);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const goOnline = () => setOnline(true);
+    const goOffline = () => setOnline(false);
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
 
   function stopPreview() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+  }
+
+  /** Quick isolated getUserMedia probe just to know whether one specific
+   * device works — used only to fill in the Камера/Мікрофон checklist when
+   * the combined request below fails, never kept open. */
+  async function probeDevice(constraints: MediaStreamConstraints): Promise<boolean> {
+    try {
+      const s = await navigator.mediaDevices.getUserMedia(constraints);
+      s.getTracks().forEach((t) => t.stop());
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   async function openPreview(constraints: MediaStreamConstraints) {
@@ -45,6 +92,8 @@ export default function PreLiveModal({
       if (videoRef.current) videoRef.current.srcObject = stream;
       setPreviewReady(true);
       setPreviewError(null);
+      setCameraOk(stream.getVideoTracks().length > 0);
+      setMicOk(stream.getAudioTracks().length > 0);
 
       const all = await navigator.mediaDevices.enumerateDevices();
       setCameras(
@@ -57,9 +106,15 @@ export default function PreLiveModal({
       const audioTrackId = stream.getAudioTracks()[0]?.getSettings().deviceId;
       if (videoTrackId) setCameraId(videoTrackId);
       if (audioTrackId) setMicId(audioTrackId);
-    } catch {
+    } catch (err) {
       setPreviewReady(false);
-      setPreviewError("Немає доступу до камери або мікрофона. Можна все одно почати ефір — доступ запитається ще раз.");
+      setPreviewError(describeMediaError(err));
+      const [cam, mic] = await Promise.all([
+        probeDevice({ video: constraints.video ?? true, audio: false }),
+        probeDevice({ video: false, audio: constraints.audio ?? true }),
+      ]);
+      setCameraOk(cam);
+      setMicOk(mic);
     }
   }
 
@@ -123,20 +178,30 @@ export default function PreLiveModal({
           <form onSubmit={handleStart} className="flex flex-col gap-4 p-5">
             <div className="relative aspect-video overflow-hidden rounded-xl border border-border-subtle bg-[#0c0d14]">
               <video ref={videoRef} autoPlay playsInline muted className="h-full w-full -scale-x-100 object-cover" />
-              {previewReady ? (
-                <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-success">
-                  <span className="h-1.5 w-1.5 rounded-full bg-success" style={{ boxShadow: "0 0 8px rgba(62,207,142,0.7)" }} />
-                  Камера і мікрофон готові
-                </span>
-              ) : previewError ? (
+              {!previewReady && previewError ? (
                 <div className="absolute inset-0 flex items-center justify-center p-4 text-center text-[12px] text-ink-tertiary">
                   {previewError}
                 </div>
-              ) : (
+              ) : !previewReady ? (
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Loader2 size={20} className="animate-spin text-ink-tertiary" />
                 </div>
-              )}
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px]">
+              <span className={`flex items-center gap-1.5 ${cameraOk ? "text-success" : cameraOk === false ? "text-danger" : "text-ink-tertiary"}`}>
+                {cameraOk ? <Check size={13} /> : cameraOk === false ? <X size={13} /> : <Loader2 size={13} className="animate-spin" />}
+                Камера
+              </span>
+              <span className={`flex items-center gap-1.5 ${micOk ? "text-success" : micOk === false ? "text-danger" : "text-ink-tertiary"}`}>
+                {micOk ? <Check size={13} /> : micOk === false ? <X size={13} /> : <Loader2 size={13} className="animate-spin" />}
+                Мікрофон
+              </span>
+              <span className={`flex items-center gap-1.5 ${online ? "text-success" : "text-danger"}`}>
+                {online ? <Wifi size={13} /> : <WifiOff size={13} />}
+                Інтернет
+              </span>
             </div>
 
             <div>
@@ -208,6 +273,7 @@ export default function PreLiveModal({
               Учасники спільноти ({memberCount.toLocaleString("uk-UA")}) побачать ефір одразу після старту.
             </p>
 
+            {!online ? <p className="text-[12.5px] text-danger">Немає інтернету — ефір не вдасться розпочати.</p> : null}
             {error ? <p className="text-[12.5px] text-danger">{error}</p> : null}
 
             <div className="mt-1 flex justify-end gap-3">
@@ -220,7 +286,7 @@ export default function PreLiveModal({
               </button>
               <button
                 type="submit"
-                disabled={starting || !title.trim()}
+                disabled={starting || !title.trim() || !online}
                 className="flex items-center gap-2 rounded-lg bg-danger px-4 py-2 text-[13px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90 disabled:opacity-60"
               >
                 {starting ? <Loader2 size={14} className="animate-spin" /> : <Radio size={14} />}
