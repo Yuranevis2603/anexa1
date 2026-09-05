@@ -1778,6 +1778,87 @@ $$;
 
 grant execute on function public.get_friends_with_mutual_count(uuid) to authenticated;
 
+-- Structured candidate pool for the "Рекомендовані люди" tab (People You May
+-- Know). SECURITY DEFINER is required because ranking needs shared-community
+-- and mutual-connection counts computed against *other* members' rows, which
+-- their own tables' RLS hides from anyone but the parties involved — same
+-- rationale as get_friends_with_mutual_count above. The p_user_id = auth.uid()
+-- guard keeps this from being used to probe a stranger's graph. All actual
+-- scoring/weighting happens in application code (lib/recommendations.ts) —
+-- this function only returns raw, privacy-safe counts and profile fields, it
+-- never reveals *who* a candidate's mutual connections or shared communities
+-- are with anyone but the two counted parties.
+create or replace function public.get_recommendation_candidates(p_user_id uuid, p_limit int default 200)
+returns table (
+  id uuid,
+  full_name text,
+  role_title text,
+  company text,
+  avatar_url text,
+  bio text,
+  industries text[],
+  skills text[],
+  interests text[],
+  business_goals text[],
+  languages jsonb,
+  location text,
+  username text,
+  shared_communities bigint,
+  candidate_communities bigint,
+  mutual_connections bigint
+)
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  with my_communities as (
+    select community_id from public.community_members where user_id = p_user_id
+  ),
+  my_friends as (
+    select case when c.requester_id = p_user_id then c.addressee_id else c.requester_id end as friend_id
+    from public.connections c
+    where c.status = 'accepted' and (c.requester_id = p_user_id or c.addressee_id = p_user_id)
+  ),
+  excluded as (
+    select addressee_id as id from public.connections where requester_id = p_user_id
+    union
+    select requester_id as id from public.connections where addressee_id = p_user_id
+    union
+    select blocked_id as id from public.user_blocks where blocker_id = p_user_id
+    union
+    select blocker_id as id from public.user_blocks where blocked_id = p_user_id
+  )
+  select
+    p.id, p.full_name, p.role_title, p.company, p.avatar_url, p.bio,
+    p.industries, p.skills, p.interests, p.business_goals, p.languages, p.location, p.username,
+    (
+      select count(*) from public.community_members cm
+      where cm.user_id = p.id and cm.community_id in (select community_id from my_communities)
+    ) as shared_communities,
+    (
+      select count(*) from public.community_members cm2 where cm2.user_id = p.id
+    ) as candidate_communities,
+    (
+      select count(*) from public.connections c3
+      where c3.status = 'accepted'
+        and (
+          (c3.requester_id = p.id and c3.addressee_id in (select friend_id from my_friends))
+          or (c3.addressee_id = p.id and c3.requester_id in (select friend_id from my_friends))
+        )
+    ) as mutual_connections
+  from public.profiles p
+  where p_user_id = (select auth.uid())
+    and p.id <> p_user_id
+    and p.is_approved = true
+    and p.deletion_requested_at is null
+    and p.id not in (select id from excluded)
+  order by p.created_at desc
+  limit p_limit;
+$$;
+
+grant execute on function public.get_recommendation_candidates(uuid, int) to authenticated;
+
 -- ============================================================================
 -- notifications
 -- One row per event a member should see in the notification center (bell +

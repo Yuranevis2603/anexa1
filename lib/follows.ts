@@ -95,6 +95,29 @@ export async function isFollowing(
   return Boolean(data);
 }
 
+/** Batched version of isFollowing for a list of candidates (e.g. the
+ * "Знайти людей" results) — one query instead of N. */
+export async function getFollowingSet(
+  supabase: SupabaseClient,
+  followerId: string,
+  followeeIds: string[]
+): Promise<Set<string>> {
+  if (followeeIds.length === 0) return new Set();
+
+  const { data, error } = await supabase
+    .from("follows")
+    .select("followee_id")
+    .eq("follower_id", followerId)
+    .in("followee_id", followeeIds);
+
+  if (error) {
+    console.error("getFollowingSet failed:", error.message);
+    return new Set();
+  }
+
+  return new Set((data ?? []).map((r) => r.followee_id as string));
+}
+
 export async function follow(supabase: SupabaseClient, followerId: string, followeeId: string): Promise<void> {
   const { error } = await supabase.from("follows").insert({ follower_id: followerId, followee_id: followeeId });
   if (error) {
