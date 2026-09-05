@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-02 (latest: Google OAuth signup — consume_invite_code(), handle_new_user() avatar_url/name fallback).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestreams — is_community_staff permission fix + realtime).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -430,18 +430,26 @@ create policy "community_livestreams_select_all"
   to authenticated
   using (true);
 
+-- Owner/admin/moderator ("staff") can start a stream, not just the owner —
+-- matches is_community_staff, the same tier community_audit_log/discussion
+-- pinning/etc. already use.
 create policy "community_livestreams_insert_own_community"
   on public.community_livestreams for insert
   to public
   with check (
     host_id = (select auth.uid())
-    and public.is_community_admin(community_id, (select auth.uid()))
+    and public.is_community_staff(community_id, (select auth.uid()))
   );
 
+-- The host can always update their own stream; staff can also step in (e.g.
+-- force-end) even when they're not the one who started it.
 create policy "community_livestreams_update_own"
   on public.community_livestreams for update
   to public
-  using (host_id = (select auth.uid()));
+  using (
+    host_id = (select auth.uid())
+    or public.is_community_staff(community_id, (select auth.uid()))
+  );
 
 -- Any authenticated member can trigger this (called from getActiveLivestream
 -- on every "Ефір" tab load); only rows 2+ minutes past their last heartbeat
@@ -2597,3 +2605,9 @@ end;
 $$;
 
 grant execute on function public.admin_deduct_ax(uuid, integer, text) to authenticated;
+
+-- Required for CommunityDetailView's "Ефір" tab / feed banner to update for
+-- everyone in realtime when someone else starts or ends a stream — RLS
+-- alone doesn't put a table on the Realtime wire (same gotcha as
+-- notifications/messages above).
+alter publication supabase_realtime add table public.community_livestreams;
