@@ -3,17 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { Filter, Search, UserPlus } from "lucide-react";
+import { Filter, Search, UserPlus, Users } from "lucide-react";
 import type { FriendListItem, IncomingConnectionRequest } from "@/lib/connections";
-import type { MatchCandidate } from "@/lib/match";
+import type { RecommendedPerson } from "@/lib/recommendations";
 import { useOnlineUsers } from "@/lib/presence";
 import ConnectionRequestsView from "@/components/connections/ConnectionRequestsView";
 import FriendCard from "./FriendCard";
 import RecommendationCard from "./RecommendationCard";
 
 const InviteFriendModal = dynamic(() => import("./InviteFriendModal"));
+const FindPeopleView = dynamic(() => import("./FindPeopleView"));
 
-type Tab = "friends" | "requests" | "recommendations";
+type Tab = "friends" | "requests" | "recommendations" | "discover";
 
 export default function FriendsView({
   userId,
@@ -24,14 +25,14 @@ export default function FriendsView({
   userId: string;
   initialFriends: FriendListItem[];
   initialRequests: IncomingConnectionRequest[];
-  initialRecommendations: MatchCandidate[];
+  initialRecommendations: RecommendedPerson[];
 }) {
   const [friends, setFriends] = useState(initialFriends);
   const [requests, setRequests] = useState(initialRequests);
   const [recommendations, setRecommendations] = useState(initialRecommendations);
 
   // Keeps this view in sync after a server refresh (e.g. accepting a
-  // request in the "Запити" tab bumps the friends list via router.refresh()).
+  // request in the "Заявки" tab bumps the friends list via router.refresh()).
   useEffect(() => setFriends(initialFriends), [initialFriends]);
   useEffect(() => setRequests(initialRequests), [initialRequests]);
   useEffect(() => setRecommendations(initialRecommendations), [initialRecommendations]);
@@ -77,10 +78,11 @@ export default function FriendsView({
     setFriends((prev) => prev.filter((f) => f.connectionId !== connectionId));
   }
 
-  const tabs: { id: Tab; label: string; count: number }[] = [
+  const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "friends", label: "Мої друзі", count: friends.length },
-    { id: "requests", label: "Запити", count: requests.length },
-    { id: "recommendations", label: "Рекомендації", count: recommendations.length },
+    { id: "requests", label: "Заявки", count: requests.length },
+    { id: "recommendations", label: "Рекомендовані люди", count: recommendations.length },
+    { id: "discover", label: "Знайти людей" },
   ];
 
   return (
@@ -204,9 +206,11 @@ export default function FriendsView({
             }`}
           >
             {t.label}
-            <span className="rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[11px] text-ink-tertiary">
-              {t.count}
-            </span>
+            {t.count !== undefined ? (
+              <span className="rounded-full bg-white/[0.07] px-1.5 py-0.5 text-[11px] text-ink-tertiary">
+                {t.count}
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
@@ -214,11 +218,29 @@ export default function FriendsView({
       <div className="mt-5">
         {tab === "friends" ? (
           filteredFriends.length === 0 ? (
-            <div className="glass rounded-2xl border border-border-subtle p-6">
-              <p className="text-[13px] text-ink-tertiary">
-                {friends.length === 0 ? "У вас поки немає друзів." : "Нікого не знайдено."}
-              </p>
-            </div>
+            friends.length === 0 ? (
+              <div className="glass flex flex-col items-center rounded-2xl border border-border-subtle p-10 text-center">
+                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-white/[0.06] text-ink-tertiary">
+                  <Users size={22} />
+                </div>
+                <p className="mt-4 text-[14px] font-medium text-ink-primary">У вас поки немає друзів</p>
+                <p className="mt-1.5 max-w-xs text-[12.5px] text-ink-tertiary">
+                  Знаходьте цікавих людей у ANEXA та спілкуйтеся з ними.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setTab("discover")}
+                  className="mt-5 flex items-center gap-2 rounded-lg bg-grad-purple-blue px-4 py-2 text-[12.5px] font-medium text-white shadow-glow-purple transition-opacity hover:opacity-90"
+                >
+                  <UserPlus size={14} />
+                  Знайти людей
+                </button>
+              </div>
+            ) : (
+              <div className="glass rounded-2xl border border-border-subtle p-6">
+                <p className="text-[13px] text-ink-tertiary">Нікого не знайдено.</p>
+              </div>
+            )
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
               {filteredFriends.map((friend) => (
@@ -237,7 +259,9 @@ export default function FriendsView({
         {tab === "recommendations" ? (
           recommendations.length === 0 ? (
             <div className="glass rounded-2xl border border-border-subtle p-6">
-              <p className="text-[13px] text-ink-tertiary">Поки немає рекомендацій — заповніть профіль, щоб отримувати кращі збіги.</p>
+              <p className="text-[13px] text-ink-tertiary">
+                Поки немає рекомендацій — заповніть профіль (інтереси, професію, місто), щоб отримувати кращі збіги.
+              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -247,6 +271,8 @@ export default function FriendsView({
             </div>
           )
         ) : null}
+
+        {tab === "discover" ? <FindPeopleView userId={userId} /> : null}
       </div>
 
       {inviteOpen ? (

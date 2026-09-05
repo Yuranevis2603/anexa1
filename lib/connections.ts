@@ -119,6 +119,53 @@ export async function getConnectionState(
   return { status: "none" };
 }
 
+/** Batched version of getConnectionState for a list of candidates (e.g. the
+ * "Знайти людей" results) — one query instead of N, since connections' own
+ * RLS already scopes rows to the viewer so a single OR-in-list select covers
+ * every pair at once. */
+export async function getConnectionStates(
+  supabase: SupabaseClient,
+  viewerId: string,
+  targetIds: string[]
+): Promise<Map<string, ConnectionState>> {
+  const states = new Map<string, ConnectionState>();
+  if (targetIds.length === 0) return states;
+
+  const { data, error } = await supabase
+    .from("connections")
+    .select("id, requester_id, addressee_id, status")
+    .or(`requester_id.eq.${viewerId},addressee_id.eq.${viewerId}`);
+
+  if (error) {
+    console.error("getConnectionStates failed:", error.message);
+    return states;
+  }
+
+  const targetSet = new Set(targetIds);
+  const rows = (data ?? []) as { id: string; requester_id: string; addressee_id: string; status: string }[];
+
+  // Two passes so an "accepted" row always wins regardless of scan order —
+  // mirrors getConnectionState's explicit priority (connected > pending).
+  for (const row of rows) {
+    const otherId = row.requester_id === viewerId ? row.addressee_id : row.requester_id;
+    if (targetSet.has(otherId) && row.status === "accepted") {
+      states.set(otherId, { status: "connected" });
+    }
+  }
+  for (const row of rows) {
+    const otherId = row.requester_id === viewerId ? row.addressee_id : row.requester_id;
+    if (!targetSet.has(otherId) || states.has(otherId) || row.status !== "pending") continue;
+
+    if (row.requester_id === viewerId) {
+      states.set(otherId, { status: "pending_sent" });
+    } else {
+      states.set(otherId, { status: "pending_received", connectionId: row.id });
+    }
+  }
+
+  return states;
+}
+
 export type ViewerRelation = {
   following: boolean;
   blocked: boolean;

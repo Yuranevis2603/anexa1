@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getProfile } from "@/lib/profile";
 import { getFriends, getIncomingConnectionRequests } from "@/lib/connections";
-import { getMatchRecommendations } from "@/lib/match";
+import { getRecommendedPeople } from "@/lib/recommendations";
 import FriendsView from "@/components/friends/FriendsView";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ export default async function FriendsPage() {
   const [friends, requests, recommendations] = await Promise.all([
     getFriends(supabase, user.id),
     getIncomingConnectionRequests(supabase, user.id),
-    profile ? getMatchRecommendations(supabase, profile, 12) : Promise.resolve([]),
+    profile ? getRecommendedPeople(supabase, profile, 10) : Promise.resolve([]),
   ]);
 
   return (
