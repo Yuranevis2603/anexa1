@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestream_messages — per-stream chat).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestreams.description — pre-live title/description).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -399,15 +399,15 @@ create policy "event_registrations_delete_own"
 -- Daily.co (see app/api/daily/rooms/route.ts). Rooms are created public
 -- (no per-viewer meeting tokens), so `room_url` alone is enough to join —
 -- deliberately simple for a v1; no recording/replay, no scheduling queue.
--- Starting/ending one is restricted to the community's owner or an Admin
--- (not Moderator — hosting is an operational role, not a content-moderation
--- one).
+-- Starting/ending one is restricted to the community's owner, Admin, or
+-- Moderator ("staff") — see is_community_staff below.
 -- ============================================================================
 create table if not exists public.community_livestreams (
   id uuid primary key default gen_random_uuid(),
   community_id uuid not null references public.communities(id),
   host_id uuid not null references public.profiles(id),
   title text not null,
+  description text,
   status text not null default 'live'
     check (status in ('live', 'ended')),
   room_url text,

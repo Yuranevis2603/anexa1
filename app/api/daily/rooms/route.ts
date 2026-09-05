@@ -25,7 +25,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const { communityId, title } = (await request.json()) as { communityId?: string; title?: string };
+  const { communityId, title, description } = (await request.json()) as {
+    communityId?: string;
+    title?: string;
+    description?: string;
+  };
   if (!communityId || !title?.trim()) {
     return NextResponse.json({ error: "Потрібні communityId і title." }, { status: 400 });
   }
@@ -95,12 +99,13 @@ export async function POST(request: Request) {
       community_id: communityId,
       host_id: user.id,
       title: title.trim(),
+      description: description?.trim() || null,
       status: "live",
       room_url: room.url,
       room_name: room.name,
     })
     .select(
-      "id, community_id, host_id, title, status, room_url, started_at, ended_at, host:profiles!community_livestreams_host_id_fkey(full_name, avatar_url)"
+      "id, community_id, host_id, title, description, status, room_url, started_at, ended_at, host:profiles!community_livestreams_host_id_fkey(full_name, avatar_url)"
     )
     .single();
 
@@ -114,6 +119,7 @@ export async function POST(request: Request) {
     community_id: string;
     host_id: string;
     title: string;
+    description: string | null;
     status: "live" | "ended";
     room_url: string | null;
     started_at: string;
@@ -129,6 +135,7 @@ export async function POST(request: Request) {
       hostName: row.host?.full_name ?? "Учасник ANEXA",
       hostAvatarUrl: row.host?.avatar_url ?? null,
       title: row.title,
+      description: row.description,
       status: row.status,
       roomUrl: row.room_url,
       startedAt: row.started_at,

@@ -7,6 +7,7 @@ export type Livestream = {
   hostName: string;
   hostAvatarUrl: string | null;
   title: string;
+  description: string | null;
   status: "live" | "ended";
   roomUrl: string | null;
   startedAt: string;
@@ -14,13 +15,14 @@ export type Livestream = {
 };
 
 const LIVESTREAM_SELECT =
-  "id, community_id, host_id, title, status, room_url, started_at, ended_at, host:profiles!community_livestreams_host_id_fkey(full_name, avatar_url)";
+  "id, community_id, host_id, title, description, status, room_url, started_at, ended_at, host:profiles!community_livestreams_host_id_fkey(full_name, avatar_url)";
 
 type LivestreamRow = {
   id: string;
   community_id: string;
   host_id: string;
   title: string;
+  description: string | null;
   status: "live" | "ended";
   room_url: string | null;
   started_at: string;
@@ -36,6 +38,7 @@ function toLivestream(row: LivestreamRow): Livestream {
     hostName: row.host?.full_name ?? "Учасник ANEXA",
     hostAvatarUrl: row.host?.avatar_url ?? null,
     title: row.title,
+    description: row.description,
     status: row.status,
     roomUrl: row.room_url,
     startedAt: row.started_at,
@@ -90,11 +93,11 @@ export async function getPastLivestreams(supabase: SupabaseClient, communityId: 
 /** Creates the Daily.co room and the DB row via the server route — the
  * Daily API key is server-only, so this can't be a plain client insert
  * like the rest of this file's writes. */
-export async function startLivestream(communityId: string, title: string): Promise<Livestream> {
+export async function startLivestream(communityId: string, title: string, description?: string): Promise<Livestream> {
   const res = await fetch("/api/daily/rooms", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ communityId, title }),
+    body: JSON.stringify({ communityId, title, description: description?.trim() || undefined }),
   });
 
   const body = await res.json();
