@@ -178,6 +178,16 @@ export async function DELETE(request: Request) {
     canEnd = Boolean(isStaff);
   }
   if (!canEnd) {
+    // Platform admin override — lets AdminEventsLive force-end a stream in
+    // any community, not just ones they're staff in themselves.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("is_platform_admin")
+      .eq("id", user.id)
+      .maybeSingle();
+    canEnd = Boolean(profile?.is_platform_admin);
+  }
+  if (!canEnd) {
     return NextResponse.json({ error: "Лише ведучий, адмін або модератор спільноти може завершити ефір." }, { status: 403 });
   }
 

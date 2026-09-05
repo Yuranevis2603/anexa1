@@ -1743,13 +1743,15 @@ create table if not exists public.notifications (
   type text not null check (type in (
     'like', 'comment', 'follow', 'connection_request', 'connection_accepted', 'message', 'review',
     'referral_joined', 'profile_approved', 'event_registration', 'event_reminder', 'admin_broadcast',
-    'admin_ax_grant', 'admin_ax_deduct'
+    'admin_ax_grant', 'admin_ax_deduct', 'community_live'
   )),
   entity_type text,
   entity_id uuid,
   -- Set only for 'admin_broadcast' (see admin_broadcast_notification below)
-  -- — every other type keeps rendering fixed per-type text client-side via
-  -- describeNotification(), so these stay null for them.
+  -- and 'community_live' (see notify_community_live below, which carries
+  -- the community name/stream title so describeNotification() doesn't need
+  -- an extra round trip) — every other type keeps rendering fixed per-type
+  -- text client-side, so these stay null for them.
   title text,
   body text,
   read_at timestamptz,
@@ -1931,6 +1933,48 @@ create trigger trg_notify_event_registration
   for each row execute function public.notify_event_registration();
 
 revoke execute on function public.notify_event_registration() from public, anon, authenticated;
+
+-- Notifies every other community member the moment a stream goes live —
+-- actor_id is the host (their name/avatar render normally, unlike the
+-- admin_* branded types), title/body carry the community name and stream
+-- title so describeNotification() doesn't need an extra round trip.
+create or replace function public.notify_community_live()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+declare
+  v_community_name text;
+  v_member record;
+begin
+  if new.status <> 'live' then
+    return new;
+  end if;
+
+  select name into v_community_name from public.communities where id = new.community_id;
+
+  for v_member in
+    select user_id from public.community_members
+    where community_id = new.community_id and user_id <> new.host_id
+  loop
+    insert into public.notifications (user_id, actor_id, type, entity_type, entity_id, title, body)
+    select v_member.user_id, new.host_id, 'community_live', 'community', new.community_id, v_community_name, new.title
+    where not exists (
+      select 1 from public.notification_preferences np
+      where np.user_id = v_member.user_id and 'community_live' = any(np.disabled_types)
+    );
+  end loop;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_notify_community_live on public.community_livestreams;
+create trigger trg_notify_community_live
+  after insert on public.community_livestreams
+  for each row execute function public.notify_community_live();
+
+revoke execute on function public.notify_community_live() from public, anon, authenticated;
 
 -- Run every 15 minutes by pg_cron (job "send_event_reminders", scheduled
 -- below). Notifies every member registered for an event starting in the

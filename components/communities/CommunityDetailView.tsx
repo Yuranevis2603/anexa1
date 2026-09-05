@@ -53,6 +53,8 @@ const ThreadDetailModal = dynamic(() => import("./ThreadDetailModal"));
 
 type Tab = "feed" | "discussions" | "live" | "events" | "members" | "about";
 
+const TAB_VALUES: Tab[] = ["feed", "discussions", "live", "events", "members", "about"];
+
 export default function CommunityDetailView({
   userId,
   initialCommunity,
@@ -66,6 +68,7 @@ export default function CommunityDetailView({
   initialThreads,
   initialPostCount,
   initialActivityCounts,
+  initialTab,
 }: {
   userId: string;
   initialCommunity: Community;
@@ -79,13 +82,17 @@ export default function CommunityDetailView({
   initialThreads: DiscussionThread[];
   initialPostCount: number;
   initialActivityCounts: Record<string, number>;
+  /** Deep-link from a "community_live" notification (?tab=live). */
+  initialTab?: string;
 }) {
   const { showToast } = useToast();
   const onlineUsers = useOnlineUsers();
 
   const [community, setCommunity] = useState(initialCommunity);
   const [pending, setPending] = useState(false);
-  const [tab, setTab] = useState<Tab>("feed");
+  const [tab, setTab] = useState<Tab>(
+    initialTab && (TAB_VALUES as string[]).includes(initialTab) ? (initialTab as Tab) : "feed"
+  );
 
   const [posts, setPosts] = useState(initialPosts);
   const [likedIds, setLikedIds] = useState(new Set(initialLikedIds));

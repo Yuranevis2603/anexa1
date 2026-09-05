@@ -14,7 +14,8 @@ export type NotificationType =
   | "event_reminder"
   | "admin_broadcast"
   | "admin_ax_grant"
-  | "admin_ax_deduct";
+  | "admin_ax_deduct"
+  | "community_live";
 
 /** Types that always come from the platform itself, never a person — these
  * render with the ANEXA mark instead of a person's avatar/generic icon. */
@@ -174,6 +175,11 @@ export function describeNotification(n: Notification): { text: string; href: str
       return { text: n.body ?? "Команда ANEXA нарахувала вам AX", href: "/dashboard/profile" };
     case "admin_ax_deduct":
       return { text: n.body ?? "Команда ANEXA списала вам AX", href: "/dashboard/profile" };
+    case "community_live":
+      return {
+        text: n.title ? `${n.title} у ефірі` : "У спільноті почався ефір",
+        href: n.entityId ? `/dashboard/communities/${n.entityId}?tab=live` : "/dashboard",
+      };
   }
 }
 
@@ -193,6 +199,7 @@ export const NOTIFICATION_TYPE_LABELS: Record<NotificationType, string> = {
   admin_broadcast: "Повідомлення від адміністрації",
   admin_ax_grant: "Нарахування AX від адміністрації",
   admin_ax_deduct: "Списання AX адміністрацією",
+  community_live: "Прямі ефіри у моїх спільнотах",
 };
 
 /** Which notification types `userId` opted out of. Missing row = none (all enabled). */

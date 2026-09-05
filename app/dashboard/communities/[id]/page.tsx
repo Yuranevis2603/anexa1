@@ -9,7 +9,13 @@ import CommunityDetailView from "@/components/communities/CommunityDetailView";
 
 export const dynamic = "force-dynamic";
 
-export default async function CommunityDetailPage({ params }: { params: { id: string } }) {
+export default async function CommunityDetailPage({
+  params,
+  searchParams,
+}: {
+  params: { id: string };
+  searchParams: { tab?: string };
+}) {
   const supabase = createClient();
 
   const {
@@ -58,6 +64,7 @@ export default async function CommunityDetailPage({ params }: { params: { id: st
       initialThreads={threads}
       initialPostCount={postCount}
       initialActivityCounts={Object.fromEntries(activityCounts)}
+      initialTab={searchParams.tab}
     />
   );
 }
