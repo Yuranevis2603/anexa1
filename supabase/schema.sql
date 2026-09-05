@@ -1,5 +1,5 @@
 -- Anexa Club schema — snapshot of the live Supabase database.
--- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestreams — is_community_staff permission fix + realtime).
+-- Regenerated to match project "Anexa.club" (ref: oqearxviszstqxxhaptq) as of 2026-09-05 (latest: community_livestream_messages — per-stream chat).
 -- This file is a reference snapshot, not a migration — apply changes via
 -- `supabase db push` / the SQL editor, then regenerate this file from the live DB.
 
@@ -472,6 +472,55 @@ end;
 $$;
 
 grant execute on function public.end_stale_livestreams(uuid) to authenticated;
+
+-- ============================================================================
+-- community_livestream_messages
+-- Per-stream chat for the "Ефір" tab — deliberately separate from
+-- discussion_threads/discussion_replies (ephemeral, tied to one livestream
+-- row, cascade-deleted with it) and from direct messages.
+-- ============================================================================
+create table if not exists public.community_livestream_messages (
+  id uuid primary key default gen_random_uuid(),
+  livestream_id uuid not null references public.community_livestreams(id) on delete cascade,
+  sender_id uuid not null references public.profiles(id),
+  body text not null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_community_livestream_messages_livestream_id
+  on public.community_livestream_messages (livestream_id, created_at);
+
+alter table public.community_livestream_messages enable row level security;
+
+-- Only members of the stream's own community can read or post — same
+-- membership boundary the community's other content already respects.
+create policy "community_livestream_messages_select_members"
+  on public.community_livestream_messages for select
+  to authenticated
+  using (
+    exists (
+      select 1 from public.community_livestreams cl
+      join public.community_members cm on cm.community_id = cl.community_id
+      where cl.id = livestream_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+create policy "community_livestream_messages_insert_members"
+  on public.community_livestream_messages for insert
+  to public
+  with check (
+    sender_id = (select auth.uid())
+    and exists (
+      select 1 from public.community_livestreams cl
+      join public.community_members cm on cm.community_id = cl.community_id
+      where cl.id = livestream_id and cm.user_id = (select auth.uid())
+    )
+  );
+
+-- Required for the chat rail's realtime subscription to receive anything —
+-- RLS alone doesn't put a table on the wire (same gotcha as notifications/
+-- community_livestreams above).
+alter publication supabase_realtime add table public.community_livestream_messages;
 
 -- ============================================================================
 -- discussion_threads / discussion_replies

@@ -6,6 +6,7 @@ import { endLivestream, pingLivestream, startLivestream, type Livestream } from 
 import { createClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ui/ToastProvider";
 import Avatar from "@/components/ui/Avatar";
+import LivestreamChat, { type MemberDirectory } from "./LivestreamChat";
 
 /** Well under end_stale_livestreams' 2-minute cutoff so a normal viewer
  * (whose tab may throttle timers in the background) never gets flagged. */
@@ -18,6 +19,7 @@ export default function LivestreamPanel({
   active,
   onActiveChange,
   initialPast,
+  memberDirectory,
 }: {
   userId: string;
   communityId: string;
@@ -29,6 +31,9 @@ export default function LivestreamPanel({
   active: Livestream | null;
   onActiveChange: (next: Livestream | null) => void;
   initialPast: Livestream[];
+  /** For resolving chat message senders without an extra query per incoming
+   * realtime message — every sender is, by RLS, a member of this community. */
+  memberDirectory: MemberDirectory;
 }) {
   const { showToast } = useToast();
   const [past, setPast] = useState(initialPast);
@@ -80,43 +85,47 @@ export default function LivestreamPanel({
   return (
     <div>
       {active ? (
-        <div className="glass overflow-hidden rounded-2xl border border-border-subtle">
-          <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
-            <div className="flex items-center gap-2.5">
-              <span className="flex items-center gap-1 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">
-                <Radio size={11} />
-                НАЖИВО
-              </span>
-              <p className="text-[13.5px] font-medium text-ink-primary">{active.title}</p>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px] lg:items-start">
+          <div className="glass overflow-hidden rounded-2xl border border-border-subtle">
+            <div className="flex items-center justify-between border-b border-border-subtle px-4 py-3">
+              <div className="flex items-center gap-2.5">
+                <span className="flex items-center gap-1 rounded-full bg-danger/15 px-2 py-0.5 text-[11px] font-semibold text-danger">
+                  <Radio size={11} />
+                  НАЖИВО
+                </span>
+                <p className="text-[13.5px] font-medium text-ink-primary">{active.title}</p>
+              </div>
+              {active.hostId === userId || canHost ? (
+                <button
+                  type="button"
+                  onClick={handleEnd}
+                  disabled={ending}
+                  className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[12px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
+                >
+                  {ending ? <Loader2 size={13} className="animate-spin" /> : null}
+                  Завершити ефір
+                </button>
+              ) : null}
             </div>
-            {active.hostId === userId || canHost ? (
-              <button
-                type="button"
-                onClick={handleEnd}
-                disabled={ending}
-                className="flex items-center gap-1.5 rounded-lg border border-border-subtle px-3 py-1.5 text-[12px] font-medium text-danger transition-colors hover:bg-danger/10 disabled:opacity-60"
-              >
-                {ending ? <Loader2 size={13} className="animate-spin" /> : null}
-                Завершити ефір
-              </button>
+            <div className="flex items-center gap-2 px-4 py-2 text-[12px] text-ink-tertiary">
+              <Avatar
+                src={active.hostAvatarUrl}
+                name={active.hostName}
+                size={20}
+                className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[9px] font-semibold text-white"
+              />
+              Веде {active.hostName}
+            </div>
+            {active.roomUrl ? (
+              <iframe
+                src={active.roomUrl}
+                allow="camera; microphone; fullscreen; display-capture; autoplay"
+                className="aspect-video w-full border-0"
+              />
             ) : null}
           </div>
-          <div className="flex items-center gap-2 px-4 py-2 text-[12px] text-ink-tertiary">
-            <Avatar
-              src={active.hostAvatarUrl}
-              name={active.hostName}
-              size={20}
-              className="relative flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full bg-grad-purple-blue text-[9px] font-semibold text-white"
-            />
-            Веде {active.hostName}
-          </div>
-          {active.roomUrl ? (
-            <iframe
-              src={active.roomUrl}
-              allow="camera; microphone; fullscreen; display-capture; autoplay"
-              className="aspect-video w-full border-0"
-            />
-          ) : null}
+
+          <LivestreamChat livestreamId={active.id} userId={userId} memberDirectory={memberDirectory} />
         </div>
       ) : (
         <div className="glass rounded-2xl border border-border-subtle p-6 text-center">
