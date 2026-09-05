@@ -28,6 +28,7 @@ export default function LivestreamChat({
   const [messages, setMessages] = useState<LivestreamChatMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  const [connectionLost, setConnectionLost] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,7 +74,12 @@ export default function LivestreamChat({
           );
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        if (cancelled) return;
+        // Video keeps working regardless — this only flags that new chat
+        // messages may not arrive live until the channel recovers.
+        setConnectionLost(status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED");
+      });
 
     return () => {
       cancelled = true;
@@ -125,6 +131,12 @@ export default function LivestreamChat({
         <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-tertiary">Чат ефіру</p>
         <span className="text-[11.5px] text-ink-tertiary">{messages.length}</span>
       </div>
+
+      {connectionLost ? (
+        <p role="status" className="border-b border-border-subtle bg-gold/10 px-4 py-2 text-[11.5px] text-gold">
+          Чат тимчасово недоступний — відео продовжує працювати.
+        </p>
+      ) : null}
 
       <div ref={listRef} className="flex flex-1 flex-col gap-3.5 overflow-y-auto px-4 py-3.5">
         {messages.length === 0 ? (

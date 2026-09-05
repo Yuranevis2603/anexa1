@@ -110,6 +110,18 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError || !inserted) {
+    // The just-created Daily room has no DB row now — never leave it
+    // dangling, whether this lost a start race or failed for another reason.
+    await fetch(`${DAILY_API}/rooms/${room.name}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${apiKey}` },
+    }).catch(() => undefined);
+
+    // idx_community_livestreams_one_live rejects a second concurrent start
+    // for the same community with 23505 — someone else's click won the race.
+    if (insertError?.code === "23505") {
+      return NextResponse.json({ error: "Ефір уже розпочато. Оновіть сторінку." }, { status: 409 });
+    }
     console.error("community_livestreams insert failed:", insertError?.message);
     return NextResponse.json({ error: "Не вдалося зберегти ефір." }, { status: 500 });
   }

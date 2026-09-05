@@ -2,11 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import Daily, { type DailyCall, type DailyParticipant } from "@daily-co/daily-js";
-import { Loader2, Maximize, Mic, MicOff, Video, VideoOff, Volume2, VolumeX } from "lucide-react";
+import {
+  Loader2,
+  Maximize,
+  Mic,
+  MicOff,
+  ScreenShare,
+  ScreenShareOff,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX,
+  WifiOff,
+} from "lucide-react";
 import { useToast } from "@/components/ui/ToastProvider";
 
 type TrackState = { track: MediaStreamTrack | null; on: boolean };
 const OFF_TRACK: TrackState = { track: null, on: false };
+
+/** "good" is the silent default — a banner only appears for a state worth
+ * interrupting the video for, matching CallStage's weak-network badge. */
+type ConnectionState = "good" | "poor" | "reconnecting";
 
 function readTrack(state: DailyParticipant["tracks"]["video"] | undefined): TrackState {
   return { track: state?.persistentTrack ?? null, on: state?.state === "playable" };
@@ -47,15 +63,31 @@ function TrackVideo({
   );
 }
 
+function connectionLabel(state: ConnectionState): string {
+  switch (state) {
+    case "reconnecting":
+      return "Відновлюємо з'єднання…";
+    case "poor":
+      return "Слабке з'єднання";
+    default:
+      return "";
+  }
+}
+
 /**
  * Custom "Ефір" video surface built on the same @daily-co/daily-js call
  * object API as CallStage — no Daily UI, no iframe. Unlike CallStage (fixed
- * 1:1), this renders either the local broadcaster's own camera or, for a
- * viewer, the one host among however many silent participants are in the
- * room. Rooms stay public/tokenless (see app/api/daily/rooms/route.ts); the
- * host is identified by matching join-time `userData.appUserId` against
+ * 1:1), this renders either the local broadcaster's own camera/screen or,
+ * for a viewer, the one host among however many silent participants are in
+ * the room. Rooms stay public/tokenless (see app/api/daily/rooms/route.ts);
+ * the host is identified by matching join-time `userData.appUserId` against
  * `hostId` rather than a server-verified role, the same trust level the
  * previous plain <iframe> already had.
+ *
+ * Screen sharing reuses Daily's built-in startScreenShare/stopScreenShare —
+ * it publishes as separate screenVideo/screenAudio tracks alongside the
+ * regular camera track (not a second connection), so camera + mic keep
+ * flowing while a screen share is live.
  */
 export default function LiveStage({
   role,
@@ -83,10 +115,22 @@ export default function LiveStage({
   const [joined, setJoined] = useState(false);
   const [localVideo, setLocalVideo] = useState<TrackState>(OFF_TRACK);
   const [localAudioOn, setLocalAudioOn] = useState(true);
+  const [screenSharing, setScreenSharing] = useState(false);
   const [hostVideo, setHostVideo] = useState<TrackState>(OFF_TRACK);
   const [hostAudio, setHostAudio] = useState<TrackState>(OFF_TRACK);
+  const [hostScreen, setHostScreen] = useState<TrackState>(OFF_TRACK);
   const [viewerMuted, setViewerMuted] = useState(false);
+  const [connection, setConnection] = useState<ConnectionState>("good");
   const stageRef = useRef<HTMLDivElement>(null);
+
+  // Daily reports this per-browser, not per-call — safe to read once.
+  const [screenShareSupported] = useState(() => {
+    try {
+      return Daily.supportedBrowser().supportsScreenShare;
+    } catch {
+      return false;
+    }
+  });
 
   useEffect(() => {
     if (callRef.current) return; // guards React StrictMode's double-invoke in dev
@@ -111,11 +155,26 @@ export default function LiveStage({
         if (host) {
           setHostVideo(readTrack(host.tracks.video));
           setHostAudio(readTrack(host.tracks.audio));
+          setHostScreen(readTrack(host.tracks.screenVideo));
+          const quality = host.networkQualityState;
+          setConnection((prev) => (prev === "reconnecting" ? prev : quality === "bad" ? "poor" : "good"));
         } else {
           setHostVideo(OFF_TRACK);
           setHostAudio(OFF_TRACK);
+          setHostScreen(OFF_TRACK);
         }
       }
+    }
+
+    function handleNetworkQuality(ev: { threshold: "good" | "low" | "very-low" }) {
+      if (role !== "broadcaster") return;
+      setConnection((prev) => (prev === "reconnecting" ? prev : ev.threshold === "good" ? "good" : "poor"));
+    }
+
+    function handleNetworkConnection(ev: { type: string; event: string }) {
+      if (ev.type !== "signaling" && ev.type !== "sfu") return;
+      if (ev.event === "interrupted") setConnection("reconnecting");
+      else if (ev.event === "connected") setConnection("good");
     }
 
     call
@@ -126,6 +185,11 @@ export default function LiveStage({
       .on("participant-joined", sync)
       .on("participant-updated", sync)
       .on("participant-left", sync)
+      .on("network-quality-change", handleNetworkQuality)
+      .on("network-connection", handleNetworkConnection)
+      .on("local-screen-share-started", () => setScreenSharing(true))
+      .on("local-screen-share-stopped", () => setScreenSharing(false))
+      .on("local-screen-share-canceled", () => setScreenSharing(false))
       .on("camera-error", () => showToast("error", "Немає доступу до камери або мікрофона."))
       .on("error", () => showToast("error", "Помилка з'єднання з ефіром."));
 
@@ -172,6 +236,20 @@ export default function LiveStage({
     setLocalVideo((v) => ({ ...v, on: next }));
   }
 
+  function toggleScreenShare() {
+    const call = callRef.current;
+    if (!call || !screenShareSupported) return;
+    if (screenSharing) {
+      call.stopScreenShare();
+    } else {
+      try {
+        call.startScreenShare();
+      } catch {
+        showToast("error", "Не вдалося розпочати демонстрацію екрана.");
+      }
+    }
+  }
+
   function toggleFullscreen() {
     const el = stageRef.current;
     if (!el) return;
@@ -182,13 +260,36 @@ export default function LiveStage({
     }
   }
 
+  const connectionText = connectionLabel(connection);
+  const showPresentation = role === "viewer" && hostScreen.on;
   const mainVideo = role === "broadcaster" ? localVideo : hostVideo;
   const mainAudio = role === "broadcaster" ? null : hostAudio;
 
   return (
     <div ref={stageRef} className="relative bg-[#0c0d14]">
       <div className="relative aspect-video w-full overflow-hidden">
-        {mainVideo.on ? (
+        {showPresentation ? (
+          <>
+            {/* Presentation is the dominant surface — never cropped/blurred
+                like the cover-fit camera fallback below, since cutting off
+                part of a slide is far worse than a bit of letterboxing. */}
+            <TrackVideo
+              video={hostScreen.track}
+              audio={hostAudio.track}
+              muted={viewerMuted}
+              className="h-full w-full bg-black object-contain"
+            />
+            {hostVideo.on ? (
+              <div className="absolute bottom-3 right-3 h-20 w-32 overflow-hidden rounded-xl border border-white/10 bg-base-card shadow-lg sm:h-24 sm:w-40">
+                <TrackVideo video={hostVideo.track} className="h-full w-full object-cover" />
+              </div>
+            ) : null}
+            <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-ink-primary">
+              <ScreenShare size={12} />
+              Демонстрація екрана
+            </span>
+          </>
+        ) : mainVideo.on ? (
           <TrackVideo
             video={mainVideo.track}
             audio={mainAudio?.track}
@@ -213,15 +314,36 @@ export default function LiveStage({
             </div>
           </>
         )}
+
+        {role === "broadcaster" && screenSharing ? (
+          <span className="absolute left-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium text-success">
+            <ScreenShare size={12} />
+            Ви показуєте екран
+          </span>
+        ) : null}
+
+        {connectionText ? (
+          <span
+            role="status"
+            aria-live="polite"
+            className={`absolute right-3 top-3 flex items-center gap-1.5 rounded-lg bg-black/60 px-2.5 py-1 text-[11px] font-medium ${
+              connection === "reconnecting" ? "text-gold" : "text-gold"
+            }`}
+          >
+            {connection === "reconnecting" ? <Loader2 size={11} className="animate-spin" /> : <WifiOff size={11} />}
+            {connectionText}
+          </span>
+        ) : null}
       </div>
 
-      <div className="flex items-center justify-center gap-3 border-t border-white/[0.06] bg-base-card py-3">
+      <div className="flex flex-wrap items-center justify-center gap-3 border-t border-white/[0.06] bg-base-card py-3">
         {role === "broadcaster" ? (
           <>
             <button
               type="button"
               onClick={toggleMic}
               aria-label={localAudioOn ? "Вимкнути мікрофон" : "Увімкнути мікрофон"}
+              aria-pressed={!localAudioOn}
               className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
                 localAudioOn ? "bg-white/[0.08] text-ink-primary hover:bg-white/[0.14]" : "bg-danger text-white"
               }`}
@@ -232,11 +354,25 @@ export default function LiveStage({
               type="button"
               onClick={toggleCamera}
               aria-label={localVideo.on ? "Вимкнути камеру" : "Увімкнути камеру"}
+              aria-pressed={!localVideo.on}
               className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors ${
                 localVideo.on ? "bg-white/[0.08] text-ink-primary hover:bg-white/[0.14]" : "bg-danger text-white"
               }`}
             >
               {localVideo.on ? <Video size={18} /> : <VideoOff size={18} />}
+            </button>
+            <button
+              type="button"
+              onClick={toggleScreenShare}
+              disabled={!screenShareSupported}
+              aria-label={screenSharing ? "Зупинити демонстрацію екрана" : "Показати екран"}
+              aria-pressed={screenSharing}
+              title={screenShareSupported ? undefined : "Демонстрація екрана не підтримується у цьому браузері."}
+              className={`flex h-11 w-11 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+                screenSharing ? "bg-grad-purple-blue text-white" : "bg-white/[0.08] text-ink-primary hover:bg-white/[0.14]"
+              }`}
+            >
+              {screenSharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
             </button>
           </>
         ) : (
@@ -244,6 +380,7 @@ export default function LiveStage({
             type="button"
             onClick={() => setViewerMuted((m) => !m)}
             aria-label={viewerMuted ? "Увімкнути звук" : "Вимкнути звук"}
+            aria-pressed={viewerMuted}
             className="flex h-9 w-9 items-center justify-center rounded-full bg-white/[0.08] text-ink-primary transition-colors hover:bg-white/[0.14]"
           >
             {viewerMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
