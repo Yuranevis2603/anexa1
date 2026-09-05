@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import {
@@ -33,7 +33,7 @@ import {
 } from "@/lib/communities";
 import type { EventItem } from "@/lib/events";
 import { getCommunityFeed, getUserLikes, getUserSaves, type FeedItem } from "@/lib/feed";
-import type { Livestream } from "@/lib/livestreams";
+import { getActiveLivestream, type Livestream } from "@/lib/livestreams";
 import { getThreads, type DiscussionThread } from "@/lib/discussions";
 import { useOnlineUsers } from "@/lib/presence";
 import { useToast } from "@/components/ui/ToastProvider";
@@ -97,6 +97,29 @@ export default function CommunityDetailView({
   const [postCount, setPostCount] = useState(initialPostCount);
 
   const [activeLivestream, setActiveLivestream] = useState(initialActiveLivestream);
+
+  // Without this, only the browser that starts/ends a stream updates its own
+  // activeLivestream state — everyone else's "Ефір" tab dot and feed banner
+  // stay stale until they reload. Any insert/update on the community's own
+  // livestream rows re-runs the same joined fetch the initial page load used.
+  useEffect(() => {
+    const supabase = createClient();
+    const communityId = initialCommunity.id;
+    const channel = supabase
+      .channel(`community-livestreams:${communityId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "community_livestreams", filter: `community_id=eq.${communityId}` },
+        () => {
+          getActiveLivestream(supabase, communityId).then(setActiveLivestream);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [initialCommunity.id]);
 
   const [threads, setThreads] = useState(initialThreads);
   const [threadComposerOpen, setThreadComposerOpen] = useState(false);
@@ -429,7 +452,7 @@ export default function CommunityDetailView({
               <LivestreamPanel
                 userId={userId}
                 communityId={community.id}
-                canHost={isAdmin}
+                canHost={isStaff}
                 active={activeLivestream}
                 onActiveChange={setActiveLivestream}
                 initialPast={initialPastLivestreams}

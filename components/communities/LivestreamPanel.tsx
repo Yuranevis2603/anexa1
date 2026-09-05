@@ -21,7 +21,8 @@ export default function LivestreamPanel({
 }: {
   userId: string;
   communityId: string;
-  /** Owner or Admin — matches community_livestreams' insert RLS. */
+  /** Owner, Admin, or Moderator — matches community_livestreams' insert RLS
+   * (is_community_staff). Also who can end a stream they didn't start. */
   canHost: boolean;
   /** Lifted to the community page so the Feed tab's live banner and this
    * tab always agree on whether a stream is running. */
@@ -88,7 +89,7 @@ export default function LivestreamPanel({
               </span>
               <p className="text-[13.5px] font-medium text-ink-primary">{active.title}</p>
             </div>
-            {active.hostId === userId ? (
+            {active.hostId === userId || canHost ? (
               <button
                 type="button"
                 onClick={handleEnd}

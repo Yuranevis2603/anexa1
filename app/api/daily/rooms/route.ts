@@ -9,8 +9,12 @@ const DAILY_API = "https://api.daily.co/v1";
  * (a secret — never exposed to the client) to call Daily's REST API.
  * Rooms are created `privacy: "public"`: anyone with the room_url can join
  * directly via an <iframe>, no per-viewer meeting token needed — the
- * simplest shape for a v1 with no admin/moderator roles yet to gate who
- * gets a "viewer" vs "host" token.
+ * simplest shape for a v1 with no "viewer" vs "host" token distinction.
+ *
+ * Who can start/end a stream mirrors is_community_staff() (owner, admin, or
+ * moderator) — the same check community_livestreams' RLS policies enforce,
+ * so this route can't reject something RLS would have allowed (or vice
+ * versa).
  */
 export async function POST(request: Request) {
   const apiKey = process.env.DAILY_API_KEY;
@@ -36,11 +40,15 @@ export async function POST(request: Request) {
 
   const { data: community } = await supabase
     .from("communities")
-    .select("id, created_by")
+    .select("id")
     .eq("id", communityId)
     .maybeSingle();
-  if (!community || community.created_by !== user.id) {
-    return NextResponse.json({ error: "Лише власник спільноти може почати ефір." }, { status: 403 });
+  const { data: isStaff } = await supabase.rpc("is_community_staff", {
+    p_community_id: communityId,
+    p_user_id: user.id,
+  });
+  if (!community || !isStaff) {
+    return NextResponse.json({ error: "Лише власник, адмін або модератор спільноти може почати ефір." }, { status: 403 });
   }
 
   // Starting a new stream always ends whatever was live before.
@@ -153,12 +161,24 @@ export async function DELETE(request: Request) {
 
   const { data: stream } = await supabase
     .from("community_livestreams")
-    .select("id, host_id, room_name, status")
+    .select("id, community_id, host_id, room_name, status")
     .eq("id", livestreamId)
     .maybeSingle();
 
-  if (!stream || stream.host_id !== user.id) {
-    return NextResponse.json({ error: "Лише ведучий може завершити ефір." }, { status: 403 });
+  if (!stream) {
+    return NextResponse.json({ error: "Ефір не знайдено." }, { status: 404 });
+  }
+
+  let canEnd = stream.host_id === user.id;
+  if (!canEnd) {
+    const { data: isStaff } = await supabase.rpc("is_community_staff", {
+      p_community_id: stream.community_id,
+      p_user_id: user.id,
+    });
+    canEnd = Boolean(isStaff);
+  }
+  if (!canEnd) {
+    return NextResponse.json({ error: "Лише ведучий, адмін або модератор спільноти може завершити ефір." }, { status: 403 });
   }
 
   if (stream.status === "ended") {
